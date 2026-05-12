@@ -11,7 +11,7 @@ D:\java\Java_LastProject\src\main\java\com\codeanalyzer\dao\AiAnalysisDAO.java
 D:\java\Java_LastProject\src\main\java\com\codeanalyzer\dao\CrawlJobDAO.java
 D:\java\Java_LastProject\src\main\java\com\codeanalyzer\dao\EvaluationDAO.java
 D:\java\Java_LastProject\src\main\java\com\codeanalyzer\dao\SubmissionDAO.java
-D:\java\Java_LastProject\src\main\java\com\codeanalyzer\MainWeb.java
+D:\java\Java_LastProject\src\main\java\com\codeanalyzer\MainSwing.java
 D:\java\Java_LastProject\src\main\java\com\codeanalyzer\model\Account.java
 D:\java\Java_LastProject\src\main\java\com\codeanalyzer\model\AccountEvaluation.java
 D:\java\Java_LastProject\src\main\java\com\codeanalyzer\model\AiAnalysis.java
@@ -21,4 +21,10 @@ D:\java\Java_LastProject\src\main\java\com\codeanalyzer\service\AccountService.j
 D:\java\Java_LastProject\src\main\java\com\codeanalyzer\service\AnalysisService.java
 D:\java\Java_LastProject\src\main\java\com\codeanalyzer\service\CrawlService.java
 D:\java\Java_LastProject\src\main\java\com\codeanalyzer\service\EvaluationService.java
-D:\java\Java_LastProject\src\main\java\TestDB.java
+D:\java\Java_LastProject\src\main\java\com\codeanalyzer\ui\AccountPanel.java
+D:\java\Java_LastProject\src\main\java\com\codeanalyzer\ui\AnalysisPanel.java
+D:\java\Java_LastProject\src\main\java\com\codeanalyzer\ui\CrawlPanel.java
+D:\java\Java_LastProject\src\main\java\com\codeanalyzer\ui\DashboardPanel.java
+D:\java\Java_LastProject\src\main\java\com\codeanalyzer\ui\EvaluationPanel.java
+D:\java\Java_LastProject\src\main\java\com\codeanalyzer\ui\SubmissionPanel.java
+D:\java\Java_LastProject\src\main\java\com\codeanalyzer\ui\UIHelper.java
