@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeAnalyzer - Web UI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="brand">
+            <i class="fa-solid fa-code"></i> CodeAnalyzer
+        </div>
+        <nav>
+            <a class="nav-item active" data-target="dashboard">
+                <i class="fa-solid fa-chart-line"></i> Dashboard
+            </a>
+            <a class="nav-item" data-target="accounts">
+                <i class="fa-solid fa-users"></i> Quản lý Nick
+            </a>
+            <a class="nav-item" data-target="crawl">
+                <i class="fa-solid fa-spider"></i> Crawl
+            </a>
+            <a class="nav-item" data-target="submissions">
+                <i class="fa-solid fa-list-check"></i> Submissions
+            </a>
+            <a class="nav-item" data-target="analysis">
+                <i class="fa-solid fa-brain"></i> Phân tích AI
+            </a>
+            <a class="nav-item" data-target="evaluation">
+                <i class="fa-solid fa-star"></i> Đánh giá
+            </a>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        
+        <!-- Dashboard Panel -->
+        <section id="dashboard" class="panel active">
+            <div class="header">
+                <h1>Tổng quan hệ thống</h1>
+                <button class="btn btn-primary" onclick="loadDashboardStats()"><i class="fa-solid fa-rotate-right"></i> Làm mới</button>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-title">Tổng số Nick</div>
+                    <div class="stat-value" id="stat-accounts">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Số Submissions</div>
+                    <div class="stat-value" id="stat-submissions">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Đã phân tích AI</div>
+                    <div class="stat-value" id="stat-analyses">0</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Accounts Panel -->
+        <section id="accounts" class="panel">
+            <div class="header">
+                <h1>Quản lý tài khoản</h1>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card" style="grid-column: span 1;">
+                    <h3>Thêm Nick mới</h3>
+                    <form id="add-account-form" style="margin-top: 20px;">
+                        <div class="form-group">
+                            <label class="form-label">Username</label>
+                            <input type="text" id="acc-username" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Platform</label>
+                            <select id="acc-platform" class="form-control">
+                                <option value="CODEFORCES">Codeforces</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Tên hiển thị</label>
+                            <input type="text" id="acc-displayname" class="form-control">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Thêm</button>
+                    </form>
+                </div>
+
+                <div class="stat-card accounts-list-card" style="grid-column: span 2;">
+                    <div class="card-header" style="padding:0; padding-bottom: 20px; border:none;">
+                        <h3>Danh sách tài khoản</h3>
+                        <button class="btn btn-primary" onclick="loadAccounts()"><i class="fa-solid fa-rotate-right"></i></button>
+                    </div>
+                    <div class="table-container accounts-table-container">
+                        <table class="accounts-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Platform</th>
+                                    <th>Tên hiển thị</th>
+                                    <th>Đã crawl</th>
+                                    <th>Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody id="accounts-table-body">
+                                <!-- Data from JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Crawl Panel -->
+        <section id="crawl" class="panel">
+            <div class="header">
+                <h1>Crawl định kỳ</h1>
+                <div>
+                    <button class="btn btn-primary" onclick="loadCrawlPanel()" style="margin-right: 8px;"><i class="fa-solid fa-rotate-right"></i> Làm mới</button>
+                    <button class="btn btn-success" onclick="startCrawlAll()"><i class="fa-solid fa-play"></i> Crawl tất cả</button>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Trạng thái</h3>
+                    <div style="margin-top: 16px;">
+                        <p>Scheduler: <span id="scheduler-status" class="badge">-</span></p>
+                        <p style="margin-top: 10px;">Crawl hiện tại: <span id="crawl-running-status" class="badge">-</span></p>
+                        <p style="margin-top: 10px;">Lịch chạy: <strong id="scheduler-plan">-</strong></p>
+                    </div>
+                    <div style="margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="schedulerAction('start')"><i class="fa-solid fa-play"></i> Bật</button>
+                        <button class="btn btn-primary" onclick="schedulerAction('restart')"><i class="fa-solid fa-rotate"></i> Khởi động lại</button>
+                        <button class="btn btn-primary" onclick="schedulerAction('stop')"><i class="fa-solid fa-pause"></i> Tắt</button>
+                    </div>
+                    <div id="crawl-status-message" style="margin-top: 12px; color: var(--text-muted);"></div>
+                </div>
+
+                <div class="stat-card">
+                    <h3>Cấu hình lịch</h3>
+                    <form id="scheduler-config-form" style="margin-top: 20px;">
+                        <div class="form-group">
+                            <label class="form-label">Khoảng cách chạy (giờ)</label>
+                            <input type="number" id="scheduler-interval" class="form-control" min="1" max="168" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Giờ bắt đầu</label>
+                            <input type="time" id="scheduler-start-time" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Lưu lịch</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Bắt đầu</th>
+                            <th>Kết thúc</th>
+                            <th>Trạng thái</th>
+                            <th>Số nick</th>
+                            <th>Submissions mới</th>
+                            <th>Lỗi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="crawl-jobs-table-body">
+                        <!-- Data from JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Submissions Panel -->
+        <section id="submissions" class="panel">
+            <div class="header">
+                <h1>Lịch sử Submissions</h1>
+                <button class="btn btn-primary" onclick="loadSubmissions()"><i class="fa-solid fa-rotate-right"></i> Làm mới</button>
+            </div>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Sub ID</th>
+                            <th>Người code</th>
+                            <th>Bài tập</th>
+                            <th>Platform</th>
+                            <th>Verdict</th>
+                            <th>Ngôn ngữ</th>
+                            <th>Thời gian nộp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="submissions-table-body">
+                        <!-- Data from JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Analysis Panel -->
+        <section id="analysis" class="panel">
+            <div class="header">
+                <h1>Phân tích AI (Gemini)</h1>
+                <div>
+                    <button class="btn btn-primary" onclick="loadAnalyses()" style="margin-right: 8px;"><i class="fa-solid fa-rotate-right"></i> Làm mới</button>
+                    <button class="btn btn-success" onclick="startAnalysis()"><i class="fa-solid fa-play"></i> Bắt đầu phân tích</button>
+                </div>
+            </div>
+            
+            <div class="stat-card" style="margin-bottom: 20px;">
+                <p>Nhấn "Bắt đầu phân tích" để hệ thống tự động gọi API AI và phân tích các bài tập chưa được phân tích.</p>
+                <div id="analysis-status" style="margin-top: 10px; color: var(--success); font-weight: bold;"></div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Người code</th>
+                            <th>Bài tập</th>
+                            <th>CTDL</th>
+                            <th>Thuật toán</th>
+                            <th>Độ phức tạp</th>
+                            <th>Độ khó</th>
+                            <th>AI Score</th>
+                            <th>Lý do AI</th>
+                            <th>Chất lượng</th>
+                            <th>Tóm tắt</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analyses-table-body">
+                        <!-- Data from JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Evaluation Panel -->
+        <section id="evaluation" class="panel">
+            <div class="header">
+                <h1>Đánh giá tổng hợp</h1>
+                <div>
+                    <button class="btn btn-primary" onclick="loadEvaluations()" style="margin-right: 8px;"><i class="fa-solid fa-rotate-right"></i> Làm mới</button>
+                    <button class="btn btn-success" onclick="evaluateAll()"><i class="fa-solid fa-star"></i> Đánh giá tất cả</button>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nick</th>
+                            <th>Level</th>
+                            <th>Điểm DS</th>
+                            <th>Điểm Algo</th>
+                            <th>Mức độ dùng AI</th>
+                            <th>Số bài phân tích</th>
+                            <th>Điểm mạnh</th>
+                            <th>Điểm yếu</th>
+                            <th>Khuyến nghị</th>
+                            <th>Đánh giá lúc</th>
+                        </tr>
+                    </thead>
+                    <tbody id="evaluations-table-body">
+                        <!-- Data from JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
