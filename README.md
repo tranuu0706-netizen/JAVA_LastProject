@@ -1,73 +1,59 @@
-# CodeAnalyzer
+# Hướng dẫn cài đặt và sử dụng CodeAnalyzer
 
-CodeAnalyzer là chương trình Java có giao diện web để quản lý nick Codeforces, crawl source code submission, phân tích CTDL/thuật toán bằng Gemini AI và đánh giá năng lực từng nick.
+## 1. Yêu cầu trước khi cài đặt
 
-## Chức năng chính
+Cần cài sẵn các phần mềm sau:
 
-- Thêm và quản lý nick Codeforces.
-- Crawl source code các submission Accepted.
-- Crawl thủ công từng nick hoặc toàn bộ nick đang active.
-- Crawl định kỳ bằng scheduler cấu hình theo giờ.
-- Lưu dữ liệu vào SQL Server.
-- Phân tích code bằng Gemini API:
-  - Cấu trúc dữ liệu chính.
-  - Thuật toán chính.
-  - Độ khó tương đối.
-  - Điểm chất lượng code.
-  - Điểm nghi ngờ sử dụng AI.
-- Đánh giá tổng hợp theo nick:
-  - Điểm CTDL.
-  - Điểm thuật toán.
-  - Mức độ sử dụng AI.
-  - Level tổng thể.
-  - Điểm mạnh, điểm yếu, khuyến nghị.
+| Thành phần | Mục đích |
+| Java JDK 17+ | Biên dịch và chạy chương trình |
+| Maven | Tải thư viện và build project |
+| SQL Server | Lưu nick, submissions, kết quả AI và đánh giá |
+| Microsoft Edge | Trình duyệt dùng cho Selenium crawl Codeforces |
+| Gemini API key | Gọi AI để phân tích source code |
 
-Lưu ý: điểm "sử dụng AI" là ước lượng dựa trên dấu hiệu trong source code, không phải bằng chứng tuyệt đối.
+Kiểm tra nhanh:
 
-## Công nghệ sử dụng
-
-- Java 17
-- Maven
-- Javalin Web UI tại `http://localhost:7070`
-- SQL Server + HikariCP
-- Selenium Edge WebDriver
-- Google Gemini API
-- Gson/Jackson
-
-## Cài đặt
-
-### 1. Yêu cầu môi trường
-
-| Thành phần | Phiên bản khuyến nghị |
-|---|---|
-| Java JDK | 17+ |
-| Maven | 3.8+ |
-| SQL Server | 2019/2022 hoặc Express |
-| Microsoft Edge | Bản mới |
-| Gemini API Key | Tạo tại Google AI Studio |
-
-### 2. Tạo database
-
-Chạy schema:
-
-```bash
-sqlcmd -S localhost -U sa -P YOUR_SQLSERVER_PASSWORD -i src/main/resources/db/schema.sql
+```powershell
+java -version
+mvn -version
 ```
 
-Nếu SQL Server của bạn không chạy ở `localhost`, thay `localhost` bằng tên server/instance tương ứng.
+Nếu `java -version` nhỏ hơn 17, cần cài JDK 17 trở lên.
 
-### 3. Cấu hình ứng dụng
+## 2. Tạo database
 
-Sửa `src/main/resources/application.properties` hoặc dùng biến môi trường.
+Mở PowerShell tại thư mục project và chạy:
 
-Ví dụ dùng file properties:
+```powershell
+sqlcmd -S localhost -U sa -P "MAT_KHAU_SQL_SERVER" -i src\main\resources\db\schema.sql
+```
+
+Nếu dùng SQL Server Express:
+
+```powershell
+sqlcmd -S localhost\SQLEXPRESS -U sa -P "MAT_KHAU_SQL_SERVER" -i src\main\resources\db\schema.sql
+```
+
+Nếu không dùng `sqlcmd`, có thể mở file `src/main/resources/db/schema.sql` bằng SQL Server Management Studio rồi nhấn `Execute`.
+
+Sau khi chạy xong, database `code_analyzer` sẽ được tạo.
+
+## 3. Cấu hình chương trình
+
+Mở file:
+
+```text
+src/main/resources/application.properties
+```
+
+Cấu hình các giá trị chính:
 
 ```properties
 db.url=jdbc:sqlserver://localhost;databaseName=code_analyzer;encrypt=true;trustServerCertificate=true;
 db.username=sa
-db.password=YOUR_SQLSERVER_PASSWORD
+db.password=MAT_KHAU_SQL_SERVER
 
-gemini.api.key=YOUR_GEMINI_API_KEY
+gemini.api.key=GEMINI_API_KEY_CUA_BAN
 gemini.model=gemini-2.5-flash
 
 edge.profile.path=D:\\CodeAnalyzerProfile
@@ -78,139 +64,134 @@ crawl.start.time=02:00
 crawl.max.submissions=500
 ```
 
-Khuyến nghị dùng biến môi trường để tránh lưu mật khẩu/API key trong source:
-
-```bash
-set DB_URL=jdbc:sqlserver://localhost;databaseName=code_analyzer;encrypt=true;trustServerCertificate=true;
-set DB_USERNAME=sa
-set DB_PASSWORD=YOUR_SQLSERVER_PASSWORD
-set GEMINI_API_KEY=YOUR_GEMINI_API_KEY
-```
-
-### 4. Chuẩn bị Edge profile
-
-Tạo profile Edge riêng cho Selenium:
-
-```bash
-"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --user-data-dir="D:\CodeAnalyzerProfile"
-```
-
-Trong cửa sổ Edge vừa mở, đăng nhập Codeforces nếu cần, bật "Remember me", sau đó đóng hoàn toàn Edge. Không dùng chung profile Edge đang lướt web vì Selenium cần quyền độc chiếm thư mục profile.
-
-### 5. Build và chạy
-
-```bash
-mvn clean package -DskipTests
-java -jar target/code-analyzer-1.0.0.jar
-```
-
-Mở trình duyệt tại:
-
-```text
-http://localhost:7070
-```
-
-Chạy qua Maven:
-
-```bash
-mvn exec:java -Dexec.mainClass="com.codeanalyzer.MainWeb"
-```
-
-## Hướng dẫn sử dụng
-
-### 1. Thêm nick
-
-Mở tab `Quản lý Nick`, nhập username Codeforces rồi nhấn `Thêm`.
-
-Khi thêm nick, hệ thống sẽ kiểm tra nick có tồn tại trên Codeforces trước khi lưu vào database. Nếu nick không tồn tại hoặc không thể kiểm tra do lỗi mạng, hệ thống sẽ báo lỗi và không thêm.
-
-Để xóa nick, nhấn nút `Xóa` trong danh sách tài khoản. Khi xóa nick, các submissions, kết quả phân tích AI và đánh giá liên quan cũng bị xóa theo.
-
-### 2. Crawl dữ liệu
-
-Trong tab `Quản lý Nick`, nhấn `Crawl` để crawl một nick.
-
-Trong tab `Crawl`, nhấn `Crawl tất cả` để crawl toàn bộ nick active. Bảng lịch sử crawl hiển thị thời điểm chạy, trạng thái, số nick xử lý, số submission mới và lỗi nếu có.
-
-### 3. Cấu hình crawl định kỳ
-
-Mở tab `Crawl`, nhập:
-
-- `Khoảng cách chạy`: ví dụ `24` giờ.
-- `Giờ bắt đầu`: ví dụ `02:00`.
-
-Nhấn `Lưu lịch`, sau đó dùng các nút `Bật`, `Tắt`, `Khởi động lại` scheduler. Khi ứng dụng chạy, scheduler tự động lên lịch theo cấu hình này.
-
-### 4. Phân tích AI
-
-Mở tab `Phân tích AI`, nhấn `Bắt đầu phân tích`. Chương trình sẽ phân tích các submission chưa có kết quả AI và lưu vào bảng `ai_analysis`.
-
-Mỗi lần bấm phân tích, hệ thống xử lý tối đa 10 submissions để tránh vượt quota Gemini và tránh chờ quá lâu.
-
-Có thể phân tích riêng từng nick bằng nút `Phân tích` trong tab `Quản lý Nick`.
-
-### 5. Đánh giá nick
-
-Sau khi đã có kết quả phân tích AI, mở tab `Đánh giá` và nhấn `Đánh giá tất cả`, hoặc nhấn `Đánh giá` riêng từng nick ở tab `Quản lý Nick`.
-
-Bảng đánh giá hiển thị level, điểm CTDL, điểm thuật toán, mức nghi ngờ dùng AI, điểm mạnh, điểm yếu và khuyến nghị.
-
-## Báo cáo thử nghiệm cần nộp
-
-Sau khi chạy thật với một số nick, ghi lại bảng kết quả theo mẫu dưới đây. Không nên dùng số liệu giả vì người chấm có thể đối chiếu với dữ liệu trong DB/UI.
-
-| Ngày chạy | Nick | Platform | Submission crawl được | Submission đã phân tích | DS Score | Algo Score | AI Usage | Level | Nhận xét |
-|---|---|---|---:|---:|---:|---:|---|---|---|
-| YYYY-MM-DD | example_user | CODEFORCES | 0 | 0 | 0 | 0 | CLEAN/LOW/... | BEGINNER/... | Điền từ tab Đánh giá |
-
-Thông tin nên ghi kèm:
-
-- Model Gemini dùng để phân tích.
-- Số submission tối đa mỗi lần crawl.
-- Ảnh chụp tab `Crawl`, `Phân tích AI`, `Đánh giá`.
-- Một vài nhận xét cụ thể: nick mạnh ở CTDL nào, thuật toán nào, dấu hiệu AI cao/thấp ra sao.
-
-## Cấu trúc dữ liệu chính
-
-- `accounts`: danh sách nick.
-- `submissions`: source code đã crawl.
-- `ai_analysis`: kết quả phân tích từng submission.
-- `account_evaluations`: đánh giá tổng hợp từng nick.
-- `crawl_jobs`: lịch sử crawl.
-- `system_config`: cấu hình runtime như lịch crawl.
-
-## Lỗi thường gặp
-
-### Không kết nối được database
-
-Kiểm tra SQL Server đang chạy, database `code_analyzer` đã tạo, URL/user/password đúng. Có thể chạy:
-
-```bash
-mvn exec:java -Dexec.mainClass="TestDB"
-```
-
-### Selenium báo `session not created` hoặc Edge không mở
-
-Đảm bảo `edge.profile.path` trỏ tới profile riêng, và không có cửa sổ Edge nào đang dùng profile đó.
-
-### Không tải được EdgeDriver
-
-Nếu WebDriverManager bị chặn mạng, tải `msedgedriver.exe` thủ công rồi đặt:
+Nếu dùng SQL Server Express, đổi `db.url` thành:
 
 ```properties
-edge.driver.path=D:\\path\\to\\folder-or-msedgedriver.exe
+db.url=jdbc:sqlserver://localhost\\SQLEXPRESS;databaseName=code_analyzer;encrypt=true;trustServerCertificate=true;
 ```
 
-### Gemini báo thiếu API key
+Lưu ý: Không nên đưa mật khẩu SQL Server hoặc Gemini API key thật lên GitHub.
 
-Đặt `GEMINI_API_KEY` trong terminal đang chạy app, hoặc điền `gemini.api.key` trong `application.properties`.
+## 4. Chuẩn bị Edge profile
 
-### Phân tích AI chậm hoặc bị quota
+Selenium cần một profile Edge riêng để crawl Codeforces ổn định.
 
-Tăng `gemini.request.delay.ms`, giảm `analysis.batch.size`, hoặc chờ quota Gemini reset.
+Chạy lệnh:
 
-## Build kiểm tra
+```powershell
+& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --user-data-dir="D:\CodeAnalyzerProfile"
+```
 
-```bash
+Sau đó:
+
+1. Mở Codeforces trong cửa sổ Edge vừa hiện.
+2. Đăng nhập nick Codeforces đã có đánh giá nếu cần.
+3. Chọn `Remember me` nếu có.
+4. Đóng toàn bộ cửa sổ Edge.
+
+Không dùng profile Edge cá nhân đang mở hằng ngày, vì Selenium cần quyền sử dụng riêng thư mục profile.
+
+## 5. Build chương trình
+
+Tại thư mục project, chạy:
+
+```powershell
 mvn clean package -DskipTests
 ```
+
+Nếu build thành công, file chạy sẽ nằm tại:
+
+```text
+target\code-analyzer-1.0.0.jar
+```
+
+Nếu Maven báo không xóa được file trong `target`, hãy tắt chương trình Java đang chạy rồi build lại.
+
+## 6. Chạy chương trình
+
+Chạy file JAR:
+
+```powershell
+java -jar target\code-analyzer-1.0.0.jar
+```
+
+Khi chạy thành công, giao diện desktop Java Swing sẽ hiện ra.
+
+Nếu terminal có dòng sau là chương trình đã khởi động đúng:
+
+```text
+CodeAnalyzer Swing UI đã khởi động
+```
+
+## 7. Hướng dẫn sử dụng
+
+### Bước 1: Thêm nick Codeforces
+
+Vào mục `Quan ly Nick`:
+
+1. Nhập username Codeforces.
+2. Nhập tên hiển thị nếu muốn.
+3. Nhấn `Thêm Nick`.
+
+Chương trình sẽ kiểm tra nick có tồn tại trên Codeforces trước khi lưu vào database.
+
+### Bước 2: Crawl submissions
+
+Có 2 cách crawl:
+
+| Cách | Thao tác |
+| Crawl từng nick | Chọn nick trong `Quan ly Nick`, sau đó nhấn `Crawl` |
+| Crawl tất cả | Vào mục `Crawl`, sau đó nhấn `Crawl tất cả` |
+
+Sau khi crawl xong, dữ liệu submissions và source code sẽ được lưu vào database.
+
+### Bước 3: Cấu hình crawl định kỳ
+
+Vào mục `Crawl`:
+
+1. Nhập khoảng cách chạy, ví dụ `24`.
+2. Nhập giờ bắt đầu, ví dụ `02:00`.
+3. Nhấn `Lưu lịch`.
+4. Dùng các nút `Bật`, `Tắt`, `Khởi động lại` để điều khiển scheduler.
+
+### Bước 4: Xem submissions
+
+Vào mục `Submissions` để xem các bài đã crawl được, gồm:
+
+- Submission ID.
+- Tên người dùng.
+- Tên bài.
+- Verdict.
+- Ngôn ngữ.
+- Thời gian nộp.
+
+### Bước 5: Phân tích AI
+
+Vào mục `Phan tich AI`:
+
+1. Nhấn `Bắt đầu phân tích`.
+2. Chờ Gemini phân tích các submission chưa có kết quả.
+3. Nhấn `Làm mới` để xem dữ liệu mới.
+
+Kết quả phân tích gồm CTDL, thuật toán, độ phức tạp, độ khó, AI Score, lý do nghi ngờ AI và chất lượng code.
+
+### Bước 6: Đánh giá nick
+
+Vào mục `Danh gia`:
+
+1. Nhấn `Đánh giá tất cả`, hoặc đánh giá từng nick.
+2. Xem DS Score, Algo Score, AI Usage, level, điểm mạnh/yếu và khuyến nghị.
+
+Cần có dữ liệu crawl và phân tích AI trước thì kết quả đánh giá mới đầy đủ.
+
+## 8. Lỗi thường gặp
+
+| Lỗi                           | Cách xử lý                                                             |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| Không kết nối được SQL Server | Kiểm tra SQL Server đang chạy, đúng username/password và đúng `db.url` |
+| Sai database                  | Đảm bảo đã chạy `schema.sql` và có database `code_analyzer`            |
+| Thiếu Gemini API key          | Kiểm tra `gemini.api.key` trong `application.properties`               |
+| Edge profile đang bị dùng     | Đóng toàn bộ Microsoft Edge rồi chạy lại app                           |
+| EdgeDriver sai phiên bản      | Cập nhật Microsoft Edge hoặc tải đúng `msedgedriver.exe`               |
+| Crawl không ra dữ liệu        | Kiểm tra đăng nhập Codeforces, mạng và profile Edge                    |
+| Phân tích AI chậm             | Giảm số lượng phân tích mỗi lượt hoặc tăng thời gian delay Gemini      |
