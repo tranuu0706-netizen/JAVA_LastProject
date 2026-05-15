@@ -46,7 +46,8 @@ public class EvaluationDAO {
     }
 
     public AccountEvaluation findLatestByAccountId(int accountId) {
-        String sql = "SELECT * FROM account_evaluations WHERE account_id = ? ORDER BY evaluated_at DESC OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY";
+        String sql = "SELECT * FROM account_evaluations WHERE account_id = ? " +
+                     "ORDER BY evaluated_at DESC, id DESC OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, accountId);
@@ -61,9 +62,10 @@ public class EvaluationDAO {
 
     public List<AccountEvaluation> findAll() {
         List<AccountEvaluation> list = new ArrayList<>();
-        String sql = "SELECT e.* FROM account_evaluations e " +
-                     "INNER JOIN (SELECT account_id, MAX(evaluated_at) as max_date FROM account_evaluations GROUP BY account_id) latest " +
-                     "ON e.account_id = latest.account_id AND e.evaluated_at = latest.max_date ORDER BY e.evaluated_at DESC";
+        String sql = "SELECT * FROM (" +
+                     "SELECT e.*, ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY evaluated_at DESC, id DESC) AS rn " +
+                     "FROM account_evaluations e" +
+                     ") ranked WHERE rn = 1 ORDER BY evaluated_at DESC, id DESC";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {

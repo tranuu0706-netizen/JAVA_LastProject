@@ -18,6 +18,8 @@ public class Submission {
     private String sourceCode;
     private LocalDateTime crawledAt;
     private String platform;       // CODEFORCES
+    private String analysisStatus; // UNANALYZED, ANALYZED, ERROR
+    private String analysisError;
 
     public Submission() {}
 
@@ -57,6 +59,12 @@ public class Submission {
 
     public String getPlatform() { return platform; }
     public void setPlatform(String platform) { this.platform = platform; }
+
+    public String getAnalysisStatus() { return analysisStatus; }
+    public void setAnalysisStatus(String analysisStatus) { this.analysisStatus = analysisStatus; }
+
+    public String getAnalysisError() { return analysisError; }
+    public void setAnalysisError(String analysisError) { this.analysisError = analysisError; }
 
     @Override
     public String toString() {

@@ -8,6 +8,8 @@ import com.google.gson.Gson;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 public class EvaluationService {
@@ -17,21 +19,54 @@ public class EvaluationService {
     private final AccountDAO accountDAO = new AccountDAO();
     private final GeminiApiClient geminiClient = new GeminiApiClient();
     private static final Gson gson = new Gson();
+    private final List<Consumer<String>> logListeners = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean running = new AtomicBoolean(false);
     private Consumer<String> logCallback;
+    private volatile boolean stoppedByAiLimit = false;
 
     public void setLogCallback(Consumer<String> logCallback) {
         this.logCallback = logCallback;
     }
 
+    public void addLogListener(Consumer<String> listener) {
+        if (listener != null && !logListeners.contains(listener)) {
+            logListeners.add(listener);
+        }
+    }
+
+    public void removeLogListener(Consumer<String> listener) {
+        logListeners.remove(listener);
+    }
+
+    public boolean isRunning() { return running.get(); }
+
+    public boolean wasStoppedByAiLimit() { return stoppedByAiLimit; }
+
     private void log(String msg) {
         System.out.println("[EvalService] " + msg);
         if (logCallback != null) logCallback.accept(msg);
+        for (Consumer<String> listener : logListeners) {
+            listener.accept(msg);
+        }
     }
 
     /**
      * Tạo đánh giá tổng hợp cho 1 account.
      */
     public AccountEvaluation evaluate(int accountId) {
+        if (!running.compareAndSet(false, true)) {
+            log("Đang có tiến trình đánh giá khác chạy. Bỏ qua yêu cầu mới.");
+            return null;
+        }
+        try {
+            stoppedByAiLimit = false;
+            return evaluateInternal(accountId);
+        } finally {
+            running.set(false);
+        }
+    }
+
+    private AccountEvaluation evaluateInternal(int accountId) {
         Account account = accountDAO.findById(accountId);
         if (account == null) return null;
 
@@ -76,7 +111,12 @@ public class EvaluationService {
                 }
             }
         } catch (GeminiApiClient.PermanentGeminiException e) {
-            log("Dừng đánh giá vì lỗi cấu hình/quota Gemini: " + e.getMessage());
+            if (GeminiApiClient.LIMIT_REACHED_MESSAGE.equals(e.getMessage())) {
+                stoppedByAiLimit = true;
+                log(GeminiApiClient.LIMIT_REACHED_MESSAGE);
+            } else {
+                log("Dừng đánh giá vì lỗi cấu hình Gemini: " + e.getMessage());
+            }
             throw e;
         } catch (Exception e) {
             log("Lỗi đánh giá: " + e.getMessage());
@@ -88,13 +128,22 @@ public class EvaluationService {
      * Đánh giá tất cả account active.
      */
     public void evaluateAll() {
-        List<Account> accounts = accountDAO.findActive();
-        for (Account acc : accounts) {
-            try {
-                evaluate(acc.getId());
-            } catch (GeminiApiClient.PermanentGeminiException e) {
-                break;
+        if (!running.compareAndSet(false, true)) {
+            log("Đang có tiến trình đánh giá khác chạy. Bỏ qua yêu cầu mới.");
+            return;
+        }
+        try {
+            stoppedByAiLimit = false;
+            List<Account> accounts = accountDAO.findActive();
+            for (Account acc : accounts) {
+                try {
+                    evaluateInternal(acc.getId());
+                } catch (GeminiApiClient.PermanentGeminiException e) {
+                    break;
+                }
             }
+        } finally {
+            running.set(false);
         }
     }
 

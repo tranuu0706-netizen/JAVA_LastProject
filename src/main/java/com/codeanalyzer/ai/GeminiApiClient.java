@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
 public class GeminiApiClient {
 
     private static final String API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent";
+    public static final String LIMIT_REACHED_MESSAGE = "AI đạt giới hạn rồi";
     private static final Gson gson = new Gson();
     private static final Object RATE_LIMIT_LOCK = new Object();
     private static long nextAllowedRequestAtMs = 0L;
@@ -89,9 +90,9 @@ public class GeminiApiClient {
         if (response.statusCode() == 429) {
             long waitSeconds = parseRetryDelay(response.body());
             if (isQuotaExhausted(response.body())) {
-                throw new DailyQuotaException("Gemini báo hết hoặc chưa cấp quota: " + summarizeError(response.body()));
+                throw new DailyQuotaException(LIMIT_REACHED_MESSAGE);
             }
-            throw new RateLimitException("Gemini đang giới hạn tốc độ/RPM/TPM: " + summarizeError(response.body()), waitSeconds);
+            throw new RateLimitException(LIMIT_REACHED_MESSAGE, waitSeconds);
         }
 
         if (response.statusCode() != 200) {
@@ -272,15 +273,15 @@ public class GeminiApiClient {
             try {
                 return sendMessage(prompt);
             } catch (DailyQuotaException e) {
-                System.err.println("❌ " + e.getMessage());
-                throw new PermanentGeminiException(e.getMessage());
+                System.err.println("❌ " + LIMIT_REACHED_MESSAGE);
+                throw new PermanentGeminiException(LIMIT_REACHED_MESSAGE);
             } catch (RateLimitException e) {
                 long waitSec = e.getRetryAfterSeconds();
                 if (i >= maxRetries) {
-                    System.err.println("❌ Vẫn bị rate limit sau " + (i + 1) + " lần thử: " + e.getMessage());
-                    return null;
+                    System.err.println("❌ " + LIMIT_REACHED_MESSAGE);
+                    throw new PermanentGeminiException(LIMIT_REACHED_MESSAGE);
                 }
-                System.err.println("⏳ " + e.getMessage() + ". Chờ " + waitSec + "s... (lần " + (i + 1) + ")");
+                System.err.println("⏳ " + LIMIT_REACHED_MESSAGE + ". Chờ " + waitSec + "s... (lần " + (i + 1) + ")");
                 try {
                     Thread.sleep(waitSec * 1000);
                 } catch (InterruptedException ie) {

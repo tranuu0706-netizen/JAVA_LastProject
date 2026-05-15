@@ -5,6 +5,9 @@ import com.zaxxer.hikari.HikariDataSource;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Properties;
@@ -16,6 +19,7 @@ import java.util.Properties;
 public class DatabaseConfig {
 
     private static HikariDataSource dataSource;
+    private static final Path LOCAL_PROPERTIES_PATH = Paths.get("application.properties").toAbsolutePath();
     private static String dbUrl;
     private static String dbUsername;
     private static String dbPassword;
@@ -33,6 +37,13 @@ public class DatabaseConfig {
             }
         } catch (IOException e) {
             System.err.println("Warning: Could not load application.properties: " + e.getMessage());
+        }
+        if (Files.exists(LOCAL_PROPERTIES_PATH)) {
+            try (InputStream is = Files.newInputStream(LOCAL_PROPERTIES_PATH)) {
+                props.load(is);
+            } catch (IOException e) {
+                System.err.println("Warning: Could not load local application.properties: " + e.getMessage());
+            }
         }
 
         dbUrl = getConfigValue(props, "db.url", "DB_URL",
@@ -84,6 +95,15 @@ public class DatabaseConfig {
         dbUrl = url;
         dbUsername = username;
         dbPassword = password;
+        initialize();
+    }
+
+    /**
+     * Reload cấu hình DB từ application.properties local/classpath và khởi tạo lại pool.
+     */
+    public static synchronized void reloadFromProperties() {
+        shutdown();
+        loadDefaultProperties();
         initialize();
     }
 

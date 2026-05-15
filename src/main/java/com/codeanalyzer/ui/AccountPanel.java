@@ -2,6 +2,8 @@ package com.codeanalyzer.ui;
 
 import com.codeanalyzer.dao.SubmissionDAO;
 import com.codeanalyzer.model.Account;
+import com.codeanalyzer.model.AccountEvaluation;
+import com.codeanalyzer.model.CrawlJob;
 import com.codeanalyzer.service.*;
 
 import javax.swing.*;
@@ -26,6 +28,8 @@ public class AccountPanel extends JPanel {
     private final DefaultTableModel tableModel;
     private final JTextField tfUsername = new JTextField(14);
     private final JTextField tfDisplayName = new JTextField(14);
+    private final JButton btnCrawlAll = UIHelper.createButton("Crawl tất cả", UIHelper.SUCCESS);
+    private final JButton btnStopCrawl = UIHelper.createButton("Dừng crawl", UIHelper.DANGER);
 
 
     public AccountPanel(AccountService accountService, SubmissionDAO submissionDAO,
@@ -45,7 +49,10 @@ public class AccountPanel extends JPanel {
         // Header
         JButton btnRefresh = UIHelper.createButton("Làm mới", UIHelper.PRIMARY);
         btnRefresh.addActionListener(e -> refreshData());
-        add(UIHelper.createHeader("Quản lý tài khoản", btnRefresh), BorderLayout.NORTH);
+        btnCrawlAll.addActionListener(e -> crawlAllAccounts());
+        btnStopCrawl.addActionListener(e -> stopCrawl());
+        btnStopCrawl.setEnabled(false);
+        add(UIHelper.createHeader("Quản lý tài khoản", btnRefresh, btnCrawlAll, btnStopCrawl), BorderLayout.NORTH);
 
         // --- Form thêm nick ---
         JPanel formPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
@@ -77,13 +84,13 @@ public class AccountPanel extends JPanel {
         JPanel actionBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         actionBar.setOpaque(false);
 
-        JButton btnCrawl = UIHelper.createSmallButton("Crawl", UIHelper.PRIMARY);
+        JButton btnCrawl = UIHelper.createSmallButton("Crawl nick", UIHelper.PRIMARY);
         btnCrawl.addActionListener(e -> crawlSelected());
 
         JButton btnAnalyze = UIHelper.createSmallButton("Phân tích AI", UIHelper.SUCCESS);
         btnAnalyze.addActionListener(e -> analyzeSelected());
 
-        JButton btnEvaluate = UIHelper.createSmallButton("Đánh giá", new Color(168, 85, 247));
+        JButton btnEvaluate = UIHelper.createSmallButton("Đánh giá", UIHelper.INFO);
         btnEvaluate.addActionListener(e -> evaluateSelected());
 
         JButton btnDelete = UIHelper.createSmallButton("Xóa", UIHelper.DANGER);
@@ -108,6 +115,12 @@ public class AccountPanel extends JPanel {
 
     private void log(String msg) {
         System.out.println("[AccountPanel] " + msg);
+    }
+
+    private void updateCrawlButtons() {
+        boolean running = crawlRunning.get();
+        btnCrawlAll.setEnabled(!running);
+        btnStopCrawl.setEnabled(running);
     }
 
     private void addAccount() {
@@ -168,9 +181,11 @@ public class AccountPanel extends JPanel {
         }
         log("Bắt đầu crawl: " + acc.getUsername());
         crawlService.setLogCallback(this::log);
-        new SwingWorker<Integer, Void>() {
+        crawlService.resetCancellation();
+        updateCrawlButtons();
+        new SwingWorker<CrawlJob, Void>() {
             @Override
-            protected Integer doInBackground() {
+            protected CrawlJob doInBackground() {
                 try {
                     return crawlService.crawlAccount(acc);
                 } finally {
@@ -181,20 +196,90 @@ public class AccountPanel extends JPanel {
             @Override
             protected void done() {
                 try {
-                    int saved = get();
-                    log("✓ Crawl xong " + acc.getUsername() + ": " + saved + " submissions mới.");
+                    CrawlJob job = get();
+                    String message;
+                    if ("FAILED".equals(job.getStatus())) {
+                        message = "Crawl thất bại: " + job.getErrorLog();
+                    } else if (crawlService.isCancelled() || "PARTIAL".equals(job.getStatus())) {
+                        message = "Đã dừng crawl. Đã lưu " + job.getSubmissionsCrawled() + " bài trước khi dừng.";
+                    } else {
+                        message = "Hoàn thành crawl được " + job.getSubmissionsCrawled() + " bài.";
+                    }
+                    log(("SUCCESS".equals(job.getStatus()) ? "✓ " : "") + message);
+                    JOptionPane.showMessageDialog(AccountPanel.this, message,
+                            "FAILED".equals(job.getStatus()) ? "Lỗi" :
+                                    ("PARTIAL".equals(job.getStatus()) ? "Đã dừng" : "Hoàn thành"),
+                            "FAILED".equals(job.getStatus()) ? JOptionPane.ERROR_MESSAGE : JOptionPane.INFORMATION_MESSAGE);
+                    updateCrawlButtons();
                     refreshData();
                 } catch (Exception e) {
                     log("Lỗi crawl: " + e.getMessage());
+                    updateCrawlButtons();
                 }
             }
         }.execute();
+    }
+
+    private void crawlAllAccounts() {
+        if (!crawlRunning.compareAndSet(false, true)) {
+            JOptionPane.showMessageDialog(this, "Đang có tiến trình crawl khác!", "Bận", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        log("Bắt đầu crawl tất cả tài khoản...");
+        crawlService.setLogCallback(this::log);
+        crawlService.resetCancellation();
+        updateCrawlButtons();
+        new SwingWorker<CrawlJob, Void>() {
+            @Override
+            protected CrawlJob doInBackground() {
+                try {
+                    return crawlService.crawlAll();
+                } finally {
+                    crawlRunning.set(false);
+                }
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    CrawlJob job = get();
+                    String message = crawlService.isCancelled()
+                            ? "Đã dừng crawl tất cả. Đã lưu " + job.getSubmissionsCrawled() + " submissions trước khi dừng."
+                            : "Hoàn thành crawl tất cả: " + job.getSubmissionsCrawled() + " submissions mới.";
+                    log((crawlService.isCancelled() ? "" : "✓ ") + message);
+                    JOptionPane.showMessageDialog(AccountPanel.this, message,
+                            crawlService.isCancelled() ? "Đã dừng" : "Hoàn thành",
+                            JOptionPane.INFORMATION_MESSAGE);
+                    updateCrawlButtons();
+                    refreshData();
+                } catch (Exception e) {
+                    log("Lỗi crawl tất cả: " + e.getMessage());
+                    updateCrawlButtons();
+                }
+            }
+        }.execute();
+    }
+
+    private void stopCrawl() {
+        if (!crawlRunning.get()) {
+            JOptionPane.showMessageDialog(this, "Không có tiến trình crawl đang chạy.", "Thông báo",
+                    JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        crawlService.cancel();
+        log("Đang yêu cầu dừng crawl...");
     }
 
     private void analyzeSelected() {
         Account acc = getSelectedAccount();
         if (acc == null)
             return;
+        if (analysisService.isRunning()) {
+            JOptionPane.showMessageDialog(this, "Đang có tiến trình phân tích AI khác chạy.", "Bận",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
         log("Bắt đầu phân tích AI: " + acc.getUsername());
         analysisService.setLogCallback(this::log);
         new SwingWorker<Integer, Void>() {
@@ -207,7 +292,16 @@ public class AccountPanel extends JPanel {
             protected void done() {
                 try {
                     int count = get();
-                    log("✓ Phân tích xong: " + count + " bài.");
+                    if (analysisService.wasStoppedByAiLimit()) {
+                        log("AI đạt giới hạn rồi");
+                        JOptionPane.showMessageDialog(AccountPanel.this, "AI đạt giới hạn rồi", "Thông báo",
+                                JOptionPane.WARNING_MESSAGE);
+                    } else {
+                        String message = "Hoàn thành phân tích xong " + count + " bài.";
+                        log("✓ " + message);
+                        JOptionPane.showMessageDialog(AccountPanel.this, message, "Hoàn thành",
+                                JOptionPane.INFORMATION_MESSAGE);
+                    }
                 } catch (Exception e) {
                     log("Lỗi phân tích: " + e.getMessage());
                 }
@@ -219,18 +313,49 @@ public class AccountPanel extends JPanel {
         Account acc = getSelectedAccount();
         if (acc == null)
             return;
+        if (evaluationService.isRunning()) {
+            JOptionPane.showMessageDialog(this, "Đang có tiến trình đánh giá khác chạy.", "Bận",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
         log("Bắt đầu đánh giá: " + acc.getUsername());
         evaluationService.setLogCallback(this::log);
-        new SwingWorker<Void, Void>() {
+        new SwingWorker<AccountEvaluation, Void>() {
             @Override
-            protected Void doInBackground() {
-                evaluationService.evaluate(acc.getId());
-                return null;
+            protected AccountEvaluation doInBackground() {
+                return evaluationService.evaluate(acc.getId());
             }
 
             @Override
             protected void done() {
-                log("✓ Đánh giá xong: " + acc.getUsername());
+                try {
+                    AccountEvaluation eval = get();
+                    if (evaluationService.wasStoppedByAiLimit()) {
+                        log("AI đạt giới hạn rồi");
+                        JOptionPane.showMessageDialog(AccountPanel.this, "AI đạt giới hạn rồi", "Thông báo",
+                                JOptionPane.WARNING_MESSAGE);
+                    } else if (eval == null) {
+                        String message = "Chưa có dữ liệu phân tích để đánh giá.";
+                        log(message);
+                        JOptionPane.showMessageDialog(AccountPanel.this, message, "Thông báo",
+                                JOptionPane.WARNING_MESSAGE);
+                    } else {
+                        String message = "Hoàn thành đánh giá tài khoản " + acc.getUsername() + ".";
+                        log("✓ " + message);
+                        JOptionPane.showMessageDialog(AccountPanel.this, message, "Hoàn thành",
+                                JOptionPane.INFORMATION_MESSAGE);
+                    }
+                } catch (Exception e) {
+                    if (evaluationService.wasStoppedByAiLimit()) {
+                        log("AI đạt giới hạn rồi");
+                        JOptionPane.showMessageDialog(AccountPanel.this, "AI đạt giới hạn rồi", "Thông báo",
+                                JOptionPane.WARNING_MESSAGE);
+                    } else {
+                        log("Lỗi đánh giá: " + e.getMessage());
+                        JOptionPane.showMessageDialog(AccountPanel.this, "Lỗi đánh giá: " + e.getMessage(), "Lỗi",
+                                JOptionPane.ERROR_MESSAGE);
+                    }
+                }
             }
         }.execute();
     }
@@ -252,6 +377,7 @@ public class AccountPanel extends JPanel {
     }
 
     public void refreshData() {
+        updateCrawlButtons();
         new SwingWorker<List<Account>, Void>() {
             @Override
             protected List<Account> doInBackground() {

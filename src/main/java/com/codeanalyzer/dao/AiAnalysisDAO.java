@@ -44,6 +44,39 @@ public class AiAnalysisDAO {
         return -1;
     }
 
+    public long saveOrUpdate(AiAnalysis analysis) {
+        AiAnalysis existing = findBySubmissionId(analysis.getSubmissionId());
+        if (existing == null) {
+            return insert(analysis);
+        }
+        analysis.setId(existing.getId());
+        return update(analysis) ? existing.getId() : -1;
+    }
+
+    public boolean update(AiAnalysis analysis) {
+        String sql = "UPDATE ai_analysis SET data_structures = ?, algorithms = ?, " +
+                     "complexity_time = ?, complexity_space = ?, ai_usage_score = ?, " +
+                     "ai_usage_reason = ?, difficulty_level = ?, code_quality_score = ?, " +
+                     "analysis_summary = ?, analyzed_at = CURRENT_TIMESTAMP WHERE submission_id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, gson.toJson(analysis.getDataStructures()));
+            ps.setString(2, gson.toJson(analysis.getAlgorithms()));
+            ps.setString(3, analysis.getComplexityTime());
+            ps.setString(4, analysis.getComplexitySpace());
+            ps.setInt(5, analysis.getAiUsageScore());
+            ps.setString(6, analysis.getAiUsageReason());
+            ps.setString(7, analysis.getDifficultyLevel());
+            ps.setInt(8, analysis.getCodeQualityScore());
+            ps.setString(9, analysis.getAnalysisSummary());
+            ps.setLong(10, analysis.getSubmissionId());
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("Lỗi cập nhật AI analysis: " + e.getMessage());
+        }
+        return false;
+    }
+
     public AiAnalysis findBySubmissionId(long submissionId) {
         String sql = "SELECT * FROM ai_analysis WHERE submission_id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
@@ -93,11 +126,13 @@ public class AiAnalysisDAO {
             while (rs.next()) {
                 String json = rs.getString("data_structures");
                 if (json != null && !json.isEmpty()) {
-                    List<String> ds = gson.fromJson(json, new TypeToken<List<String>>(){}.getType());
+                    List<String> ds = parseStringList(json);
                     if (ds != null) all.addAll(ds);
                 }
             }
-        } catch (SQLException e) { /* ignore */ }
+        } catch (Exception e) {
+            System.err.println("Lỗi lấy CTDL thống kê: " + e.getMessage());
+        }
         return all;
     }
 
@@ -110,11 +145,13 @@ public class AiAnalysisDAO {
             while (rs.next()) {
                 String json = rs.getString("algorithms");
                 if (json != null && !json.isEmpty()) {
-                    List<String> algos = gson.fromJson(json, new TypeToken<List<String>>(){}.getType());
+                    List<String> algos = parseStringList(json);
                     if (algos != null) all.addAll(algos);
                 }
             }
-        } catch (SQLException e) { /* ignore */ }
+        } catch (Exception e) {
+            System.err.println("Lỗi lấy thuật toán thống kê: " + e.getMessage());
+        }
         return all;
     }
 
@@ -123,9 +160,9 @@ public class AiAnalysisDAO {
         a.setId(rs.getLong("id"));
         a.setSubmissionId(rs.getLong("submission_id"));
         String dsJson = rs.getString("data_structures");
-        a.setDataStructures(dsJson != null ? gson.fromJson(dsJson, new TypeToken<List<String>>(){}.getType()) : new ArrayList<>());
+        a.setDataStructures(dsJson != null ? parseStringList(dsJson) : new ArrayList<>());
         String algoJson = rs.getString("algorithms");
-        a.setAlgorithms(algoJson != null ? gson.fromJson(algoJson, new TypeToken<List<String>>(){}.getType()) : new ArrayList<>());
+        a.setAlgorithms(algoJson != null ? parseStringList(algoJson) : new ArrayList<>());
         a.setComplexityTime(rs.getString("complexity_time"));
         a.setComplexitySpace(rs.getString("complexity_space"));
         a.setAiUsageScore(rs.getInt("ai_usage_score"));
@@ -136,6 +173,15 @@ public class AiAnalysisDAO {
         Timestamp ts = rs.getTimestamp("analyzed_at");
         if (ts != null) a.setAnalyzedAt(ts.toLocalDateTime());
         return a;
+    }
+
+    private List<String> parseStringList(String json) {
+        try {
+            List<String> values = gson.fromJson(json, new TypeToken<List<String>>(){}.getType());
+            return values != null ? values : new ArrayList<>();
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
     }
 
     /**

@@ -1,6 +1,5 @@
 package com.codeanalyzer.ui;
 
-import com.codeanalyzer.config.AppConfig;
 import com.codeanalyzer.crawler.CrawlScheduler;
 import com.codeanalyzer.model.CrawlJob;
 import com.codeanalyzer.service.CrawlService;
@@ -8,149 +7,145 @@ import com.codeanalyzer.service.CrawlService;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.time.LocalTime;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Panel Crawl: quản lý scheduler, crawl tất cả, lịch sử crawl.
+ * Panel lịch sử crawl: chạy crawl thủ công, dừng crawl và xem lịch sử/log.
  */
 public class CrawlPanel extends JPanel {
 
     private final CrawlService crawlService;
-    private final CrawlScheduler crawlScheduler;
     private final AtomicBoolean crawlRunning;
 
-    private final JLabel lblSchedulerStatus = new JLabel("---");
-    private final JLabel lblCrawlStatus = new JLabel("---");
-    private final JLabel lblPlan = new JLabel("---");
-    private final JSpinner spinInterval = new JSpinner(new SpinnerNumberModel(24, 1, 168, 1));
-    private final JTextField tfStartTime = new JTextField("02:00", 6);
+    private final JButton btnStartCrawl = UIHelper.createButton("Bắt đầu Crawl", UIHelper.PRIMARY);
+    private final JButton btnStopCrawl = UIHelper.createButton("Dừng", UIHelper.CARD_BORDER);
+    private final JButton btnRefresh = UIHelper.createButton("Làm mới", UIHelper.CARD_BORDER);
+    private final JButton btnShowJobLog = UIHelper.createButton("Xem log job", UIHelper.CARD_BORDER);
+    private final JLabel statusLabel = UIHelper.styledLabel("Sẵn sàng", new Font("Segoe UI", Font.BOLD, 12), UIHelper.TEXT_MUTED);
+
     private final JTable table;
     private final DefaultTableModel tableModel;
-    private final JTextArea logArea = new JTextArea(5, 40);
+    private final JTextArea logArea = new JTextArea();
+    private final Map<Integer, CrawlJob> jobById = new HashMap<>();
 
     public CrawlPanel(CrawlService crawlService, CrawlScheduler crawlScheduler, AtomicBoolean crawlRunning) {
         this.crawlService = crawlService;
-        this.crawlScheduler = crawlScheduler;
         this.crawlRunning = crawlRunning;
+        this.crawlService.addLogListener(this::log);
+        this.crawlService.addJobListener(job -> SwingUtilities.invokeLater(this::refreshData));
 
-        setLayout(new BorderLayout(0, 12));
-        setBorder(BorderFactory.createEmptyBorder(30, 30, 30, 30));
+        setLayout(new BorderLayout(0, 10));
+        setBorder(BorderFactory.createEmptyBorder(24, 24, 24, 24));
         setBackground(UIHelper.BG_DARK);
 
-        // Header
-        JButton btnRefresh = UIHelper.createButton("Làm mới", UIHelper.PRIMARY);
+        JLabel title = UIHelper.styledLabel("Lịch sử Crawl Submission", new Font("Segoe UI", Font.BOLD, 24), Color.WHITE);
+        add(title, BorderLayout.NORTH);
+
+        btnStartCrawl.addActionListener(e -> startCrawlAll());
+        btnStopCrawl.addActionListener(e -> stopCrawl());
         btnRefresh.addActionListener(e -> refreshData());
-        JButton btnCrawlAll = UIHelper.createButton("Crawl tất cả", UIHelper.SUCCESS);
-        btnCrawlAll.addActionListener(e -> startCrawlAll());
-        add(UIHelper.createHeader("Crawl định kỳ", btnRefresh, btnCrawlAll), BorderLayout.NORTH);
+        btnShowJobLog.addActionListener(e -> showSelectedJobLog());
+        btnStopCrawl.setEnabled(false);
 
-        // --- Top panel: Status + Config ---
-        JPanel topGrid = new JPanel(new GridLayout(1, 2, 16, 0));
-        topGrid.setOpaque(false);
-
-        // Status card
-        JPanel statusCard = new JPanel();
-        statusCard.setLayout(new BoxLayout(statusCard, BoxLayout.Y_AXIS));
-        statusCard.setBackground(UIHelper.CARD_BG);
-        statusCard.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(UIHelper.CARD_BORDER),
-                BorderFactory.createEmptyBorder(16, 20, 16, 20)));
-
-        statusCard.add(createStatusRow("Scheduler:", lblSchedulerStatus));
-        statusCard.add(Box.createVerticalStrut(8));
-        statusCard.add(createStatusRow("Crawl hiện tại:", lblCrawlStatus));
-        statusCard.add(Box.createVerticalStrut(8));
-        statusCard.add(createStatusRow("Lịch chạy:", lblPlan));
-        statusCard.add(Box.createVerticalStrut(12));
-
-        JPanel schedulerBtns = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        schedulerBtns.setOpaque(false);
-        JButton btnStart = UIHelper.createSmallButton("Bật", UIHelper.SUCCESS);
-        btnStart.addActionListener(e -> { crawlScheduler.start(); refreshStatus(); });
-        JButton btnStop = UIHelper.createSmallButton("Tắt", UIHelper.DANGER);
-        btnStop.addActionListener(e -> { crawlScheduler.stop(); refreshStatus(); });
-        JButton btnRestart = UIHelper.createSmallButton("Khởi động lại", UIHelper.PRIMARY);
-        btnRestart.addActionListener(e -> { crawlScheduler.restart(); refreshStatus(); });
-        schedulerBtns.add(btnStart);
-        schedulerBtns.add(btnStop);
-        schedulerBtns.add(btnRestart);
-        statusCard.add(schedulerBtns);
-
-        // Config card
-        JPanel configCard = new JPanel();
-        configCard.setLayout(new BoxLayout(configCard, BoxLayout.Y_AXIS));
-        configCard.setBackground(UIHelper.CARD_BG);
-        configCard.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(UIHelper.CARD_BORDER),
-                BorderFactory.createEmptyBorder(16, 20, 16, 20)));
-
-        JLabel cfgTitle = UIHelper.styledLabel("Cấu hình lịch", new Font("Segoe UI", Font.BOLD, 15), Color.WHITE);
-        cfgTitle.setAlignmentX(LEFT_ALIGNMENT);
-        configCard.add(cfgTitle);
-        configCard.add(Box.createVerticalStrut(12));
-
-        JPanel cfgRow1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        cfgRow1.setOpaque(false);
-        cfgRow1.setAlignmentX(LEFT_ALIGNMENT);
-        cfgRow1.add(UIHelper.styledLabel("Khoảng cách (giờ):", new Font("Segoe UI", Font.PLAIN, 13), UIHelper.TEXT_MUTED));
-        cfgRow1.add(spinInterval);
-        configCard.add(cfgRow1);
-        configCard.add(Box.createVerticalStrut(8));
-
-        JPanel cfgRow2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        cfgRow2.setOpaque(false);
-        cfgRow2.setAlignmentX(LEFT_ALIGNMENT);
-        cfgRow2.add(UIHelper.styledLabel("Giờ bắt đầu:", new Font("Segoe UI", Font.PLAIN, 13), UIHelper.TEXT_MUTED));
-        cfgRow2.add(tfStartTime);
-        configCard.add(cfgRow2);
-        configCard.add(Box.createVerticalStrut(12));
-
-        JButton btnSave = UIHelper.createButton("Lưu lịch", UIHelper.PRIMARY);
-        btnSave.setAlignmentX(LEFT_ALIGNMENT);
-        btnSave.addActionListener(e -> saveSchedulerConfig());
-        configCard.add(btnSave);
-
-        topGrid.add(statusCard);
-        topGrid.add(configCard);
-
-        // --- Bảng lịch sử crawl ---
-        String[] cols = {"ID", "Bắt đầu", "Kết thúc", "Trạng thái", "Số nick", "Submissions mới", "Lỗi"};
+        String[] cols = {"ID", "Bắt đầu", "Kết thúc", "Trạng thái", "Accounts", "Scanned", "New", "Skipped", "Analyzed"};
         table = UIHelper.createTable(cols);
+        table.putClientProperty("disableDefaultRowDetail", true);
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         tableModel = (DefaultTableModel) table.getModel();
-        table.getColumnModel().getColumn(0).setPreferredWidth(40);
-        table.getColumnModel().getColumn(6).setPreferredWidth(200);
+        table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+        table.getColumnModel().getColumn(0).setPreferredWidth(60);
+        table.getColumnModel().getColumn(1).setPreferredWidth(160);
+        table.getColumnModel().getColumn(2).setPreferredWidth(160);
+        table.getColumnModel().getColumn(3).setPreferredWidth(120);
+        table.getColumnModel().getColumn(4).setPreferredWidth(90);
+        table.getColumnModel().getColumn(5).setPreferredWidth(90);
+        table.getColumnModel().getColumn(6).setPreferredWidth(80);
+        table.getColumnModel().getColumn(7).setPreferredWidth(90);
+        table.getColumnModel().getColumn(8).setPreferredWidth(90);
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int row = table.rowAtPoint(e.getPoint());
+                if (e.getClickCount() == 2 && row >= 0) {
+                    table.setRowSelectionInterval(row, row);
+                    showSelectedJobLog();
+                }
+            }
+        });
 
-        // --- Log area ---
         logArea.setEditable(false);
         logArea.setFont(new Font("Consolas", Font.PLAIN, 12));
-        logArea.setBackground(new Color(20, 22, 28));
+        logArea.setBackground(UIHelper.FIELD_BG);
         logArea.setForeground(UIHelper.TEXT_MUTED);
-        JScrollPane logScroll = new JScrollPane(logArea);
-        logScroll.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(UIHelper.CARD_BORDER), "Log Crawl",
-                0, 0, new Font("Segoe UI", Font.BOLD, 12), UIHelper.TEXT_MUTED));
-        logScroll.setPreferredSize(new Dimension(0, 100));
+        logArea.setLineWrap(true);
+        logArea.setWrapStyleWord(true);
 
-        // Center layout
-        JPanel center = new JPanel(new BorderLayout(0, 12));
-        center.setOpaque(false);
-        center.add(topGrid, BorderLayout.NORTH);
-        center.add(UIHelper.wrapInScrollPane(table), BorderLayout.CENTER);
-        center.add(logScroll, BorderLayout.SOUTH);
+        JPanel content = new JPanel(new BorderLayout(0, 8));
+        content.setOpaque(false);
+        content.add(createToolbar(), BorderLayout.NORTH);
 
-        add(center, BorderLayout.CENTER);
+        JPanel historyAndLog = new JPanel(new BorderLayout(0, 8));
+        historyAndLog.setOpaque(false);
+        historyAndLog.add(createHistoryPanel(), BorderLayout.NORTH);
+        historyAndLog.add(createLogPanel(), BorderLayout.CENTER);
+        content.add(historyAndLog, BorderLayout.CENTER);
+
+        add(content, BorderLayout.CENTER);
     }
 
-    private JPanel createStatusRow(String label, JLabel value) {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        row.setOpaque(false);
-        row.setAlignmentX(LEFT_ALIGNMENT);
-        row.add(UIHelper.styledLabel(label, new Font("Segoe UI", Font.PLAIN, 13), UIHelper.TEXT_MUTED));
-        value.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        row.add(value);
-        return row;
+    private JPanel createToolbar() {
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
+        toolbar.setBackground(UIHelper.CARD_BG);
+        toolbar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UIHelper.CARD_BORDER),
+                BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+
+        JPanel statusBox = new JPanel(new BorderLayout());
+        statusBox.setBackground(UIHelper.FIELD_BG);
+        statusBox.setBorder(BorderFactory.createEmptyBorder(8, 18, 8, 18));
+        statusBox.setPreferredSize(new Dimension(260, 34));
+        statusBox.add(statusLabel, BorderLayout.CENTER);
+
+        toolbar.add(btnStartCrawl);
+        toolbar.add(btnStopCrawl);
+        toolbar.add(btnRefresh);
+        toolbar.add(btnShowJobLog);
+        toolbar.add(statusBox);
+        return toolbar;
+    }
+
+    private JPanel createHistoryPanel() {
+        JPanel panel = new JPanel(new BorderLayout(0, 4));
+        panel.setOpaque(false);
+
+        JLabel title = UIHelper.styledLabel("Lịch sử Crawl", new Font("Segoe UI", Font.BOLD, 13), UIHelper.TEXT_MAIN);
+        panel.add(title, BorderLayout.NORTH);
+
+        JScrollPane tableScroll = UIHelper.wrapInScrollPane(table);
+        tableScroll.setPreferredSize(new Dimension(0, 190));
+        panel.add(tableScroll, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createLogPanel() {
+        JPanel panel = new JPanel(new BorderLayout(0, 4));
+        panel.setOpaque(false);
+
+        JLabel title = UIHelper.styledLabel("Log", new Font("Segoe UI", Font.BOLD, 13), UIHelper.TEXT_MAIN);
+        panel.add(title, BorderLayout.NORTH);
+
+        JScrollPane logScroll = new JScrollPane(logArea,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        logScroll.setBorder(BorderFactory.createLineBorder(UIHelper.CARD_BORDER));
+        logScroll.getViewport().setBackground(logArea.getBackground());
+        panel.add(logScroll, BorderLayout.CENTER);
+        return panel;
     }
 
     private void log(String msg) {
@@ -161,58 +156,104 @@ public class CrawlPanel extends JPanel {
     }
 
     private void refreshStatus() {
-        boolean running = crawlScheduler.isRunning();
-        lblSchedulerStatus.setText(running ? "Đang bật" : "Đã tắt");
-        lblSchedulerStatus.setForeground(running ? UIHelper.SUCCESS : UIHelper.WARNING);
-        lblCrawlStatus.setText(crawlRunning.get() ? "Đang crawl" : "Rảnh");
-        lblCrawlStatus.setForeground(crawlRunning.get() ? UIHelper.WARNING : UIHelper.SUCCESS);
-        lblPlan.setText("Mỗi " + AppConfig.getCrawlIntervalHours() + " giờ, bắt đầu " + AppConfig.getCrawlStartTime());
-        lblPlan.setForeground(UIHelper.TEXT_MAIN);
-        spinInterval.setValue(AppConfig.getCrawlIntervalHours());
-        tfStartTime.setText(AppConfig.getCrawlStartTime());
+        boolean running = crawlRunning.get();
+        btnStartCrawl.setEnabled(!running);
+        btnStopCrawl.setEnabled(running);
+        statusLabel.setText(running ? "Đang crawl..." : "Sẵn sàng");
+        statusLabel.setForeground(running ? UIHelper.WARNING : UIHelper.TEXT_MUTED);
     }
 
     private void startCrawlAll() {
         if (!crawlRunning.compareAndSet(false, true)) {
-            JOptionPane.showMessageDialog(this, "Đang có tiến trình crawl!", "Bận", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Đang có tiến trình crawl khác!", "Bận", JOptionPane.WARNING_MESSAGE);
+            refreshStatus();
             return;
         }
+
+        logArea.setText("");
         log("Bắt đầu crawl tất cả tài khoản...");
-        crawlService.setLogCallback(this::log);
-        new SwingWorker<Void, Void>() {
+        crawlService.resetCancellation();
+        refreshStatus();
+
+        new SwingWorker<CrawlJob, Void>() {
             @Override
-            protected Void doInBackground() {
+            protected CrawlJob doInBackground() {
                 try {
-                    crawlService.crawlAll();
+                    return crawlService.crawlAll();
                 } finally {
                     crawlRunning.set(false);
                 }
-                return null;
             }
 
             @Override
             protected void done() {
-                log("✓ Hoàn tất crawl tất cả.");
+                try {
+                    CrawlJob job = get();
+                    if (crawlService.isCancelled()) {
+                        log("Đã dừng crawl theo yêu cầu.");
+                    } else {
+                        log("Hoàn tất crawl: " + job.getSubmissionsCrawled() + " submissions mới.");
+                    }
+                } catch (Exception e) {
+                    log("Lỗi crawl: " + e.getMessage());
+                }
+                refreshStatus();
                 refreshData();
             }
         }.execute();
+    }
+
+    private void stopCrawl() {
+        if (!crawlRunning.get()) {
+            log("Không có tiến trình crawl đang chạy.");
+            refreshStatus();
+            return;
+        }
+
+        log("Đang yêu cầu dừng crawl...");
+        crawlService.cancel();
         refreshStatus();
     }
 
-    private void saveSchedulerConfig() {
-        int interval = (int) spinInterval.getValue();
-        String startTime = tfStartTime.getText().trim();
-        try {
-            LocalTime.parse(startTime);
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Giờ bắt đầu phải có dạng HH:mm", "Sai định dạng", JOptionPane.ERROR_MESSAGE);
+    private void showSelectedJobLog() {
+        int viewRow = table.getSelectedRow();
+        if (viewRow < 0) {
+            log("Chọn một dòng lịch sử crawl để xem log riêng của job.");
             return;
         }
-        AppConfig.set("crawl_interval_hours", String.valueOf(interval));
-        AppConfig.set("crawl_start_time", startTime);
-        if (crawlScheduler.isRunning()) crawlScheduler.restart();
-        refreshStatus();
-        log("✓ Đã lưu lịch: mỗi " + interval + " giờ, bắt đầu " + startTime);
+        int modelRow = table.convertRowIndexToModel(viewRow);
+        Object idValue = tableModel.getValueAt(modelRow, 0);
+        if (!(idValue instanceof Integer jobId)) {
+            return;
+        }
+        CrawlJob job = jobById.get(jobId);
+        if (job == null) {
+            log("Không tìm thấy dữ liệu job #" + jobId + ". Hãy bấm Làm mới.");
+            return;
+        }
+
+        StringBuilder text = new StringBuilder();
+        text.append("=== Crawl job #").append(job.getId()).append(" ===\n");
+        text.append("Trạng thái: ").append(job.getStatus()).append("\n");
+        text.append("Bắt đầu: ").append(UIHelper.formatDateTime(job.getStartedAt())).append("\n");
+        text.append("Kết thúc: ").append(UIHelper.formatDateTime(job.getFinishedAt())).append("\n");
+        text.append("Accounts: ").append(job.getAccountsProcessed()).append("\n");
+        text.append("Scanned: ").append(job.getSubmissionsScanned()).append("\n");
+        text.append("New: ").append(job.getSubmissionsCrawled()).append("\n");
+        text.append("Skipped: ").append(job.getSubmissionsSkipped()).append("\n");
+        text.append("Analyzed: ").append(job.getSubmissionsAnalyzed()).append("\n\n");
+
+        if (job.getCrawlLog() != null && !job.getCrawlLog().isBlank()) {
+            text.append(job.getCrawlLog());
+        } else {
+            text.append("Job này chưa có log chi tiết. Các job cũ trước khi nâng cấp có thể chỉ có thống kê tổng.");
+        }
+        if (job.getErrorLog() != null && !job.getErrorLog().isBlank()) {
+            text.append("\n\n=== Errors ===\n").append(job.getErrorLog());
+        }
+
+        logArea.setText(text.toString());
+        logArea.setCaretPosition(0);
     }
 
     public void refreshData() {
@@ -228,21 +269,23 @@ public class CrawlPanel extends JPanel {
                 try {
                     List<CrawlJob> jobs = get();
                     tableModel.setRowCount(0);
+                    jobById.clear();
                     for (CrawlJob job : jobs) {
-                        String error = job.getErrorLog();
-                        if (error != null && error.length() > 80) error = error.substring(0, 80) + "...";
+                        jobById.put(job.getId(), job);
                         tableModel.addRow(new Object[]{
                                 job.getId(),
                                 UIHelper.formatDateTime(job.getStartedAt()),
                                 UIHelper.formatDateTime(job.getFinishedAt()),
                                 job.getStatus(),
                                 job.getAccountsProcessed(),
+                                job.getSubmissionsScanned(),
                                 job.getSubmissionsCrawled(),
-                                error != null ? error : ""
+                                job.getSubmissionsSkipped(),
+                                job.getSubmissionsAnalyzed()
                         });
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    log("Lỗi tải lịch sử crawl: " + e.getMessage());
                 }
             }
         }.execute();

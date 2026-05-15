@@ -80,6 +80,9 @@ public class AccountService {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
+                if (response.statusCode() == 400) {
+                    return new AccountValidation(false, "Không tồn tại tài khoản trên Codeforces.");
+                }
                 return new AccountValidation(false, "Không kiểm tra được Codeforces user, HTTP " + response.statusCode());
             }
 
@@ -88,7 +91,7 @@ public class AccountService {
                     && root.has("result") && root.getAsJsonArray("result").size() > 0) {
                 return new AccountValidation(true, "Codeforces user hợp lệ.");
             }
-            return new AccountValidation(false, "Codeforces user không tồn tại.");
+            return new AccountValidation(false, "Không tồn tại tài khoản trên Codeforces.");
         } catch (Exception e) {
             return new AccountValidation(false, "Không kiểm tra được Codeforces user: " + e.getMessage());
         }

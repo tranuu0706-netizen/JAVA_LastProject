@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
@@ -37,6 +38,7 @@ public class CodeforcesCrawler {
 
     private final BrowserManager browserManager;
     private Consumer<String> logCallback;
+    private BooleanSupplier cancelCheck = () -> false;
 
     public CodeforcesCrawler(BrowserManager browserManager) {
         this.browserManager = browserManager;
@@ -46,9 +48,17 @@ public class CodeforcesCrawler {
         this.logCallback = logCallback;
     }
 
+    public void setCancelCheck(BooleanSupplier cancelCheck) {
+        this.cancelCheck = cancelCheck != null ? cancelCheck : () -> false;
+    }
+
     private void log(String message) {
         System.out.println("[CF Crawler] " + message);
         if (logCallback != null) logCallback.accept("[CF] " + message);
+    }
+
+    private boolean isCancelled() {
+        return cancelCheck.getAsBoolean();
     }
 
     /**
@@ -57,12 +67,19 @@ public class CodeforcesCrawler {
      */
     public List<Submission> crawlSubmissions(String username, int accountId, 
             java.util.function.BiPredicate<String, String> existsCheck) {
-        return crawlSubmissions(username, accountId, existsCheck, null);
+        return crawlSubmissionsWithStats(username, accountId, existsCheck, null).getSubmissions();
     }
 
     public List<Submission> crawlSubmissions(String username, int accountId,
             java.util.function.BiPredicate<String, String> existsCheck,
             java.util.function.BiConsumer<String, LocalDateTime> submittedAtUpdater) {
+        return crawlSubmissionsWithStats(username, accountId, existsCheck, submittedAtUpdater).getSubmissions();
+    }
+
+    public CrawlResult crawlSubmissionsWithStats(String username, int accountId,
+            java.util.function.BiPredicate<String, String> existsCheck,
+            java.util.function.BiConsumer<String, LocalDateTime> submittedAtUpdater) {
+        CrawlResult crawlResult = new CrawlResult();
         List<Submission> results = new ArrayList<>();
         WebDriver driver = browserManager.getDriver();
         int maxSubs = AppConfig.getMaxSubmissionsPerCrawl();
@@ -72,6 +89,10 @@ public class CodeforcesCrawler {
             log("Đang mở trang submissions: " + url);
             driver.get(url);
             BrowserManager.randomDelay();
+            if (isCancelled()) {
+                log("Đã dừng crawl trước khi đọc danh sách submissions.");
+                return crawlResult;
+            }
 
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(15));
             wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("table.status-frame-datatable")));
@@ -81,6 +102,10 @@ public class CodeforcesCrawler {
 
             List<String> subIds = new ArrayList<>();
             for (WebElement r : rowElements) {
+                if (isCancelled()) {
+                    log("Đã dừng khi đọc danh sách submissions.");
+                    return crawlResult;
+                }
                 try {
                     String id = r.getAttribute("data-submission-id");
                     if (id != null && !id.isEmpty()) subIds.add(id);
@@ -89,8 +114,16 @@ public class CodeforcesCrawler {
 
             if (subIds.isEmpty()) {
                 BrowserManager.randomDelay();
+                if (isCancelled()) {
+                    log("Đã dừng khi chờ tải lại danh sách submissions.");
+                    return crawlResult;
+                }
                 rowElements = driver.findElements(By.cssSelector("table.status-frame-datatable tr[data-submission-id]"));
                 for (WebElement r : rowElements) {
+                    if (isCancelled()) {
+                        log("Đã dừng khi đọc danh sách submissions.");
+                        return crawlResult;
+                    }
                     try {
                         String id = r.getAttribute("data-submission-id");
                         if (id != null && !id.isEmpty()) subIds.add(id);
@@ -99,13 +132,23 @@ public class CodeforcesCrawler {
             }
 
             Map<String, LocalDateTime> submittedAtById = fetchCodeforcesSubmittedAt(username, Math.max(subIds.size(), maxSubs));
+            if (isCancelled()) {
+                log("Đã dừng trước khi xử lý submissions.");
+                return crawlResult;
+            }
 
             int crawled = 0;
             for (String subId : subIds) {
+                if (isCancelled()) {
+                    log("Đã dừng khi xử lý submissions.");
+                    break;
+                }
                 if (crawled >= maxSubs) break;
+                crawlResult.incrementScanned();
                 try {
                     // Bỏ qua submission đã có - KHÔNG đếm vào giới hạn
                     if (existsCheck.test(subId, "CODEFORCES")) {
+                        crawlResult.incrementSkippedExisting();
                         LocalDateTime submittedAt = submittedAtById.get(subId);
                         if (submittedAt != null && submittedAtUpdater != null) {
                             submittedAtUpdater.accept(subId, submittedAt);
@@ -196,6 +239,10 @@ public class CodeforcesCrawler {
             // Lấy source code sau khi đã parse xong DOM để tránh StaleElementReferenceException
             List<Submission> finalResults = new ArrayList<>();
             for (Submission sub : results) {
+                if (isCancelled()) {
+                    log("Đã dừng trước khi lấy source code còn lại.");
+                    break;
+                }
                 String sourceCode = crawlSourceCode(driver, sub.getContestId(), sub.getSubmissionId());
                 if (sourceCode != null && !sourceCode.isEmpty()) {
                     sub.setSourceCode(sourceCode);
@@ -203,10 +250,17 @@ public class CodeforcesCrawler {
                     log("Crawled: " + sub.getProblemId() + " - " + sub.getProblemName() + " [" + sub.getSubmissionId() + "]");
                 }
                 BrowserManager.randomDelay();
+                if (isCancelled()) {
+                    log("Đã dừng sau khi lấy source code.");
+                    break;
+                }
             }
             results = finalResults;
+            crawlResult.setSubmissions(results);
 
-            log("Hoàn tất crawl CF cho " + username + ": " + results.size() + " submissions");
+            log("Hoàn tất crawl CF cho " + username + ": quét " + crawlResult.getScanned()
+                    + ", bỏ qua " + crawlResult.getSkippedExisting()
+                    + ", ứng viên mới " + results.size());
 
         } catch (TimeoutException e) {
             log("Timeout khi load trang submissions cho " + username);
@@ -214,7 +268,25 @@ public class CodeforcesCrawler {
             log("Lỗi crawl CF: " + e.getMessage());
         }
 
-        return results;
+        crawlResult.setSubmissions(results);
+        return crawlResult;
+    }
+
+    public static class CrawlResult {
+        private List<Submission> submissions = new ArrayList<>();
+        private int scanned;
+        private int skippedExisting;
+
+        public List<Submission> getSubmissions() { return submissions; }
+        public void setSubmissions(List<Submission> submissions) {
+            this.submissions = submissions != null ? submissions : new ArrayList<>();
+        }
+
+        public int getScanned() { return scanned; }
+        public void incrementScanned() { scanned++; }
+
+        public int getSkippedExisting() { return skippedExisting; }
+        public void incrementSkippedExisting() { skippedExisting++; }
     }
 
     /**
@@ -290,10 +362,16 @@ public class CodeforcesCrawler {
      */
     private String crawlSourceCode(WebDriver driver, String contestId, String submissionId) {
         try {
+            if (isCancelled()) {
+                return "";
+            }
             String currentUrl = driver.getCurrentUrl();
             String subUrl = "https://codeforces.com/contest/" + contestId + "/submission/" + submissionId;
             driver.get(subUrl);
             BrowserManager.randomDelay();
+            if (isCancelled()) {
+                return "";
+            }
 
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 

@@ -2,6 +2,10 @@ package com.codeanalyzer.config;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.Map;
@@ -16,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 public class AppConfig {
 
     private static final Map<String, String> configCache = new ConcurrentHashMap<>();
+    private static final Path LOCAL_PROPERTIES_PATH = Paths.get("application.properties").toAbsolutePath();
     private static volatile boolean loaded = false;
 
     /**
@@ -26,21 +31,30 @@ public class AppConfig {
     }
 
     private static void loadFromProperties() {
+        Properties props = new Properties();
         try (InputStream input = AppConfig.class.getClassLoader().getResourceAsStream("application.properties")) {
             if (input != null) {
-                Properties props = new Properties();
                 props.load(input);
-                
-                // Map properties keys từ format db.url → db_url
-                for (String key : props.stringPropertyNames()) {
-                    String value = props.getProperty(key);
-                    String cacheKey = key.replace(".", "_");
-                    configCache.put(cacheKey, value);
-                }
                 System.out.println("✓ Loaded configuration from application.properties");
             }
         } catch (IOException e) {
             System.err.println("Warning: Could not load application.properties: " + e.getMessage());
+        }
+
+        if (Files.exists(LOCAL_PROPERTIES_PATH)) {
+            try (InputStream input = Files.newInputStream(LOCAL_PROPERTIES_PATH)) {
+                props.load(input);
+                System.out.println("✓ Loaded local configuration from " + LOCAL_PROPERTIES_PATH);
+            } catch (IOException e) {
+                System.err.println("Warning: Could not load local application.properties: " + e.getMessage());
+            }
+        }
+
+        // Map properties keys từ format db.url → db_url
+        for (String key : props.stringPropertyNames()) {
+            String value = props.getProperty(key);
+            String cacheKey = key.replace(".", "_");
+            configCache.put(cacheKey, value);
         }
     }
 
@@ -108,9 +122,49 @@ public class AppConfig {
     }
 
     /**
+     * Cập nhật cache runtime, dùng khi cần áp dụng ngay cấu hình local.
+     */
+    public static void setRuntime(String key, String value) {
+        configCache.put(key, value != null ? value : "");
+    }
+
+    /**
+     * Lưu cấu hình ra file application.properties ở thư mục chạy ứng dụng.
+     * Key truyền vào dùng format dot, ví dụ db.url, gemini.api.key.
+     */
+    public static synchronized void saveToLocalProperties(Map<String, String> dotKeyValues) throws IOException {
+        Properties props = new Properties();
+        try (InputStream input = AppConfig.class.getClassLoader().getResourceAsStream("application.properties")) {
+            if (input != null) {
+                props.load(input);
+            }
+        }
+        if (Files.exists(LOCAL_PROPERTIES_PATH)) {
+            try (InputStream input = Files.newInputStream(LOCAL_PROPERTIES_PATH)) {
+                props.load(input);
+            }
+        }
+
+        for (Map.Entry<String, String> entry : dotKeyValues.entrySet()) {
+            String dotKey = entry.getKey();
+            String value = entry.getValue() != null ? entry.getValue() : "";
+            props.setProperty(dotKey, value);
+            configCache.put(dotKey.replace(".", "_"), value);
+        }
+
+        try (OutputStream output = Files.newOutputStream(LOCAL_PROPERTIES_PATH)) {
+            props.store(output, "CodeAnalyzer local settings");
+        }
+    }
+
+    /**
      * Lấy Gemini API key.
      */
     public static String getGeminiApiKey() {
+        String configuredKey = get("gemini_api_key", "").trim();
+        if (!configuredKey.isBlank()) {
+            return configuredKey;
+        }
         String envKey = System.getenv("GEMINI_API_KEY");
         if (envKey != null && !envKey.isBlank()) {
             return envKey.trim();
@@ -182,7 +236,7 @@ public class AppConfig {
      * Số token output tối đa cho mỗi lần Gemini trả JSON.
      */
     public static int getGeminiMaxOutputTokens() {
-        return Math.max(1024, getInt("gemini_max_output_tokens", 3072));
+        return Math.max(1024, getInt("gemini_max_output_tokens", 4096));
     }
 
     /**
@@ -190,9 +244,9 @@ public class AppConfig {
      */
     public static String getEdgeProfilePath() {
         return firstNonBlank(
+                get("edge_profile_path", ""),
                 System.getProperty("edge.profile.path"),
-                System.getenv("EDGE_PROFILE_PATH"),
-                get("edge_profile_path", "")
+                System.getenv("EDGE_PROFILE_PATH")
         );
     }
 
@@ -201,9 +255,9 @@ public class AppConfig {
      */
     public static String getEdgeDriverPath() {
         return firstNonBlank(
+                get("edge_driver_path", ""),
                 System.getProperty("edge.driver.path"),
-                System.getenv("EDGE_DRIVER_PATH"),
-                get("edge_driver_path", "")
+                System.getenv("EDGE_DRIVER_PATH")
         );
     }
 
@@ -234,7 +288,7 @@ public class AppConfig {
      * Độ dài code tối đa gửi vào prompt.
      */
     public static int getAnalysisMaxCodeLength() {
-        return Math.max(500, getInt("analysis_max_code_length", 2500));
+        return Math.max(500, getInt("analysis_max_code_length", 4000));
     }
 
     /**
@@ -256,6 +310,8 @@ public class AppConfig {
      */
     public static void reload() {
         loaded = false;
+        configCache.clear();
+        loadFromProperties();
         loadFromDatabase();
     }
 }

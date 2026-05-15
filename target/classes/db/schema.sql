@@ -44,6 +44,8 @@ BEGIN
         source_code NVARCHAR(MAX),
         crawled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         platform VARCHAR(50) NOT NULL CHECK (platform IN ('CODEFORCES')),
+        analysis_status VARCHAR(30) NOT NULL DEFAULT 'UNANALYZED',
+        analysis_error NVARCHAR(MAX) NULL,
         CONSTRAINT uq_submission UNIQUE (submission_id, platform),
         CONSTRAINT fk_sub_account FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
     );
@@ -105,8 +107,11 @@ BEGIN
         finished_at DATETIME NULL,
         status VARCHAR(50) CHECK (status IN ('RUNNING','SUCCESS','FAILED','PARTIAL')),
         accounts_processed INT DEFAULT 0,
+        submissions_scanned INT DEFAULT 0,
         submissions_crawled INT DEFAULT 0,
+        submissions_skipped INT DEFAULT 0,
         submissions_analyzed INT DEFAULT 0,
+        crawl_log NVARCHAR(MAX) NULL,
         error_log NVARCHAR(MAX) NULL
     );
 END

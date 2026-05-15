@@ -53,8 +53,9 @@ db.url=jdbc:sqlserver://localhost;databaseName=code_analyzer;encrypt=true;trustS
 db.username=sa
 db.password=MAT_KHAU_SQL_SERVER
 
-gemini.api.key=GEMINI_API_KEY_CUA_BAN
+gemini.api.key=
 gemini.model=gemini-2.5-flash
+ Lưu ý: không nên bỏ api key vào đây vì nó không an toàn.Cứ để trống vậy , Khi xuống phần chạy chương trình tôi sẽ hướng dẫn
 
 edge.profile.path=D:\\CodeAnalyzerProfile
 edge.driver.path=
@@ -69,8 +70,6 @@ Nếu dùng SQL Server Express, đổi `db.url` thành:
 ```properties
 db.url=jdbc:sqlserver://localhost\\SQLEXPRESS;databaseName=code_analyzer;encrypt=true;trustServerCertificate=true;
 ```
-
-Lưu ý: Không nên đưa mật khẩu SQL Server hoặc Gemini API key thật lên GitHub.
 
 ## 4. Chuẩn bị Edge profile
 
@@ -109,25 +108,20 @@ Nếu Maven báo không xóa được file trong `target`, hãy tắt chương t
 
 ## 6. Chạy chương trình
 
-Chạy file JAR:
-
-```powershell
-java -jar target\code-analyzer-1.0.0.jar
-```
+setx GEMINI_API_KEY "KEY_MOI_CUA_BAN"  
+ Lưu ý: khi đạt giới hạn limit thì sẽ đổi key vì key free nên limit rất nhanh
+sau đó copy nguyên lệnh này :
+$env:GEMINI_API_KEY = [Environment]::GetEnvironmentVariable("GEMINI_API_KEY", "User")
+Cuối cùng cho chạy chương trình:  
+ java -jar target\code-analyzer-1.0.0.jar
 
 Khi chạy thành công, giao diện desktop Java Swing sẽ hiện ra.
-
-Nếu terminal có dòng sau là chương trình đã khởi động đúng:
-
-```text
-CodeAnalyzer Swing UI đã khởi động
-```
 
 ## 7. Hướng dẫn sử dụng
 
 ### Bước 1: Thêm nick Codeforces
 
-Vào mục `Quan ly Nick`:
+Vào mục `Quản lý tài khoản`:
 
 1. Nhập username Codeforces.
 2. Nhập tên hiển thị nếu muốn.
@@ -140,7 +134,7 @@ Chương trình sẽ kiểm tra nick có tồn tại trên Codeforces trước k
 Có 2 cách crawl:
 
 | Cách | Thao tác |
-| Crawl từng nick | Chọn nick trong `Quan ly Nick`, sau đó nhấn `Crawl` |
+| Crawl từng nick | Chọn nick trong `Quản lý tài khoản`, sau đó nhấn `Crawl` |
 | Crawl tất cả | Vào mục `Crawl`, sau đó nhấn `Crawl tất cả` |
 
 Sau khi crawl xong, dữ liệu submissions và source code sẽ được lưu vào database.

@@ -6,17 +6,23 @@ import com.codeanalyzer.model.Submission;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * DAO cho bảng submissions.
  */
 public class SubmissionDAO {
+    public static final String STATUS_UNANALYZED = "UNANALYZED";
+    public static final String STATUS_ANALYZED = "ANALYZED";
+    public static final String STATUS_ERROR = "ERROR";
+    private static final AtomicBoolean schemaEnsured = new AtomicBoolean(false);
 
     /**
      * Thêm submission mới.
      * @return ID tự sinh, hoặc -1 nếu lỗi.
      */
     public long insert(Submission sub) {
+        ensureSchema();
         String sql = "INSERT INTO submissions (account_id, submission_id, problem_id, problem_name, " +
                      "contest_id, language, verdict, submitted_at, source_code, platform) " +
                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -53,6 +59,7 @@ public class SubmissionDAO {
      * Kiểm tra submission đã tồn tại chưa.
      */
     public boolean exists(String submissionId, String platform) {
+        ensureSchema();
         String sql = "SELECT 1 FROM submissions WHERE submission_id = ? AND platform = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -71,6 +78,7 @@ public class SubmissionDAO {
      * Cập nhật lại thời điểm nộp gốc cho submission đã có trong DB.
      */
     public boolean updateSubmittedAt(String submissionId, String platform, java.time.LocalDateTime submittedAt) {
+        ensureSchema();
         if (submittedAt == null) return false;
 
         String sql = "UPDATE submissions SET submitted_at = ? WHERE submission_id = ? AND platform = ?";
@@ -90,6 +98,7 @@ public class SubmissionDAO {
      * Lấy tất cả submissions của một account.
      */
     public List<Submission> findByAccountId(int accountId) {
+        ensureSchema();
         List<Submission> list = new ArrayList<>();
         String sql = "SELECT * FROM submissions WHERE account_id = ? ORDER BY submitted_at DESC";
         try (Connection conn = DatabaseConfig.getConnection();
@@ -110,6 +119,7 @@ public class SubmissionDAO {
      * Lấy submission theo ID nội bộ.
      */
     public Submission findById(long id) {
+        ensureSchema();
         String sql = "SELECT * FROM submissions WHERE id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -127,10 +137,12 @@ public class SubmissionDAO {
      * Lấy submissions chưa được phân tích AI.
      */
     public List<Submission> findUnanalyzed(int limit) {
+        ensureSchema();
         List<Submission> list = new ArrayList<>();
         String sql = "SELECT s.* FROM submissions s " +
                      "LEFT JOIN ai_analysis a ON s.id = a.submission_id " +
                      "WHERE a.id IS NULL AND s.source_code IS NOT NULL AND s.source_code != '' " +
+                     "AND (s.analysis_status IS NULL OR s.analysis_status = 'UNANALYZED') " +
                      "ORDER BY s.submitted_at DESC OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -150,10 +162,12 @@ public class SubmissionDAO {
      * Lấy submissions chưa phân tích của 1 account.
      */
     public List<Submission> findUnanalyzedByAccount(int accountId, int limit) {
+        ensureSchema();
         List<Submission> list = new ArrayList<>();
         String sql = "SELECT s.* FROM submissions s " +
                      "LEFT JOIN ai_analysis a ON s.id = a.submission_id " +
                      "WHERE a.id IS NULL AND s.account_id = ? AND s.source_code IS NOT NULL AND s.source_code != '' " +
+                     "AND (s.analysis_status IS NULL OR s.analysis_status = 'UNANALYZED') " +
                      "ORDER BY s.submitted_at DESC OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -174,6 +188,7 @@ public class SubmissionDAO {
      * Tìm kiếm/lọc submissions.
      */
     public List<Submission> search(Integer accountId, String platform, String verdict, String language) {
+        ensureSchema();
         List<Submission> list = new ArrayList<>();
         StringBuilder sql = new StringBuilder("SELECT * FROM submissions WHERE 1=1 ");
         List<Object> params = new ArrayList<>();
@@ -218,6 +233,7 @@ public class SubmissionDAO {
      * Đếm tổng submissions.
      */
     public int count() {
+        ensureSchema();
         String sql = "SELECT COUNT(*) FROM submissions";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -233,6 +249,7 @@ public class SubmissionDAO {
      * Đếm submissions theo account.
      */
     public int countByAccount(int accountId) {
+        ensureSchema();
         String sql = "SELECT COUNT(*) FROM submissions WHERE account_id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -262,6 +279,55 @@ public class SubmissionDAO {
         Timestamp crawlTs = rs.getTimestamp("crawled_at");
         if (crawlTs != null) s.setCrawledAt(crawlTs.toLocalDateTime());
         s.setPlatform(rs.getString("platform"));
+        s.setAnalysisStatus(rs.getString("analysis_status"));
+        s.setAnalysisError(rs.getString("analysis_error"));
         return s;
+    }
+
+    public boolean updateAnalysisStatus(long submissionDbId, String status, String errorMessage) {
+        ensureSchema();
+        String sql = "UPDATE submissions SET analysis_status = ?, analysis_error = ? WHERE id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, status);
+            ps.setString(2, errorMessage);
+            ps.setLong(3, submissionDbId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("Lỗi cập nhật trạng thái phân tích: " + e.getMessage());
+        }
+        return false;
+    }
+
+    private void ensureSchema() {
+        if (!schemaEnsured.compareAndSet(false, true)) {
+            return;
+        }
+        try (Connection conn = DatabaseConfig.getConnection();
+             Statement st = conn.createStatement()) {
+            st.execute("""
+                    IF COL_LENGTH('dbo.submissions', 'analysis_status') IS NULL
+                    BEGIN
+                        ALTER TABLE dbo.submissions ADD analysis_status VARCHAR(30) NOT NULL
+                            CONSTRAINT DF_submissions_analysis_status DEFAULT 'UNANALYZED'
+                    END
+                    """);
+            st.execute("""
+                    IF COL_LENGTH('dbo.submissions', 'analysis_error') IS NULL
+                    BEGIN
+                        ALTER TABLE dbo.submissions ADD analysis_error NVARCHAR(MAX) NULL
+                    END
+                    """);
+            st.execute("""
+                    UPDATE s
+                    SET analysis_status = 'ANALYZED', analysis_error = NULL
+                    FROM dbo.submissions s
+                    INNER JOIN dbo.ai_analysis a ON a.submission_id = s.id
+                    WHERE s.analysis_status IS NULL OR s.analysis_status = 'UNANALYZED'
+                    """);
+        } catch (SQLException e) {
+            schemaEnsured.set(false);
+            System.err.println("Lỗi cập nhật schema submissions: " + e.getMessage());
+        }
     }
 }
