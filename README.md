@@ -107,6 +107,8 @@ Nếu build thành công, file chạy nằm trong thư mục `target`.
 
 ## 6. Chạy chương trình
 
+click chuột phải vào file MainSwing.java chọn lệnh run java
+
 Chạy bằng lệnh:
 
 ```powershell

@@ -55,18 +55,22 @@ public class CrawlScheduler {
             return;
         }
 
-        intervalHours = AppConfig.getCrawlIntervalHours();
+        intervalHours = Math.max(1, AppConfig.getCrawlIntervalHours());
         String startTimeStr = AppConfig.getCrawlStartTime();
 
-        // Calculate initial delay to start time
-        long initialDelay = calculateInitialDelay(startTimeStr);
+        LocalDateTime firstRunAt = calculateNextRunAt(startTimeStr, intervalHours);
+        long initialDelay = Math.max(0, Duration.between(LocalDateTime.now(), firstRunAt).toMillis());
         long periodMs = TimeUnit.HOURS.toMillis(intervalHours);
-        nextRunAt = LocalDateTime.now().plus(Duration.ofMillis(initialDelay));
+        nextRunAt = firstRunAt;
 
         log(String.format("Lên lịch crawl: bắt đầu sau %d phút, lặp lại mỗi %d giờ",
                 initialDelay / 60000, intervalHours));
 
         scheduledTask = scheduler.scheduleAtFixedRate(() -> {
+            LocalDateTime scheduledRunAt = nextRunAt;
+            nextRunAt = scheduledRunAt != null
+                    ? scheduledRunAt.plusHours(intervalHours)
+                    : LocalDateTime.now().plusHours(intervalHours);
             try {
                 log("Bắt đầu crawl tự động...");
                 if (crawlTask != null) {
@@ -76,7 +80,7 @@ public class CrawlScheduler {
             } catch (Exception e) {
                 log("Lỗi crawl tự động: " + e.getMessage());
             } finally {
-                nextRunAt = LocalDateTime.now().plusHours(intervalHours);
+                alignNextRunAfterNow();
             }
         }, initialDelay, periodMs, TimeUnit.MILLISECONDS);
 
@@ -113,7 +117,7 @@ public class CrawlScheduler {
     }
 
     public int getIntervalHours() {
-        return intervalHours > 0 ? intervalHours : AppConfig.getCrawlIntervalHours();
+        return Math.max(1, intervalHours > 0 ? intervalHours : AppConfig.getCrawlIntervalHours());
     }
 
     public String getCountdownText() {
@@ -136,26 +140,43 @@ public class CrawlScheduler {
         long seconds = totalSeconds % 60;
         long totalMinutes = Math.max(1, remaining.toMinutes());
 
-        return String.format("[Scheduler] Lần crawl kế tiếp sau %02d:%02d:%02d (%d phút), lặp lại mỗi %d giờ",
+        return String.format("[Scheduler] Lần crawl kế tiếp lúc %s, sau %02d:%02d:%02d (%d phút), lặp lại mỗi %d giờ",
+                nextRun.format(DateTimeFormatter.ofPattern("dd/MM HH:mm")),
                 hours, minutes, seconds, totalMinutes, getIntervalHours());
     }
 
     /**
-     * Tính delay từ hiện tại đến giờ bắt đầu.
+     * Tính mốc crawl kế tiếp theo chu kỳ startTime + n * intervalHours.
      */
-    private long calculateInitialDelay(String startTimeStr) {
+    private LocalDateTime calculateNextRunAt(String startTimeStr, int intervalHours) {
         try {
+            int safeIntervalHours = Math.max(1, intervalHours);
             LocalTime targetTime = LocalTime.parse(startTimeStr, DateTimeFormatter.ofPattern("HH:mm"));
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime nextRun = now.toLocalDate().atTime(targetTime);
-            if (now.isAfter(nextRun)) {
-                nextRun = nextRun.plusDays(1);
+
+            while (!nextRun.isAfter(now)) {
+                nextRun = nextRun.plusHours(safeIntervalHours);
             }
-            return Duration.between(now, nextRun).toMillis();
+            return nextRun;
         } catch (Exception e) {
-            // Default: 1 hour from now
-            return TimeUnit.HOURS.toMillis(1);
+            return LocalDateTime.now().plusHours(1);
         }
+    }
+
+    private void alignNextRunAfterNow() {
+        LocalDateTime nextRun = nextRunAt;
+        int safeIntervalHours = getIntervalHours();
+        if (nextRun == null) {
+            nextRunAt = LocalDateTime.now().plusHours(safeIntervalHours);
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        while (!nextRun.isAfter(now)) {
+            nextRun = nextRun.plusHours(safeIntervalHours);
+        }
+        nextRunAt = nextRun;
     }
 
     /**

@@ -91,7 +91,6 @@ public class SubmissionPanel extends JPanel {
                 BorderFactory.createEmptyBorder(6, 8, 6, 8)));
 
         JLabel label = UIHelper.styledLabel("Username:", new Font("Segoe UI", Font.BOLD, 13), UIHelper.TEXT_MAIN);
-        JButton btnFilter = UIHelper.createSmallButton("Lọc", UIHelper.PRIMARY);
         JButton btnClear = UIHelper.createSmallButton("Xóa lọc", UIHelper.WARNING);
         filterStatusLabel = UIHelper.styledLabel(" ", new Font("Segoe UI", Font.PLAIN, 12), UIHelper.TEXT_MUTED);
 
@@ -103,7 +102,6 @@ public class SubmissionPanel extends JPanel {
                 refreshData();
             }
         });
-        btnFilter.addActionListener(e -> refreshData());
         btnClear.addActionListener(e -> {
             if (cbAccountFilter.getItemCount() > 0) {
                 cbAccountFilter.setSelectedIndex(0);
@@ -113,7 +111,6 @@ public class SubmissionPanel extends JPanel {
 
         panel.add(label);
         panel.add(cbAccountFilter);
-        panel.add(btnFilter);
         panel.add(btnClear);
         panel.add(filterStatusLabel);
         return panel;
