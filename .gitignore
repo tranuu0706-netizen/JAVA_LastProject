@@ -1,0 +1,24 @@
+# Build output
+target/
+
+# Local runtime configuration
+/application.properties
+
+# Local browser profile and downloaded driver artifacts
+/CodeAnalyzerProfile/
+/Driver_Notes/
+/msedgedriver.exe
+
+# IDE/user files
+.vscode/
+.idea/
+*.iml
+*.log
+*.tmp
+
+# Generated helper files that are not needed for the submitted source
+/.github/java-upgrade/
+
+# OS files
+Thumbs.db
+.DS_Store

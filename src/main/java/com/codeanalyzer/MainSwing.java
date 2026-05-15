@@ -170,6 +170,7 @@ public class MainSwing {
             frame.getContentPane().setBackground(UIHelper.BG_DARK);
             frame.add(sidebarPanel, BorderLayout.WEST);
             frame.add(contentPanel, BorderLayout.CENTER);
+            frame.add(createStatusBar(crawlScheduler), BorderLayout.SOUTH);
 
             // Load dữ liệu ban đầu
             dashboardPanel.refreshData();
@@ -177,6 +178,46 @@ public class MainSwing {
             frame.setVisible(true);
             System.out.println("✓ CodeAnalyzer Swing UI đã khởi động.");
         });
+    }
+
+    private static JPanel createStatusBar(CrawlScheduler crawlScheduler) {
+        JPanel statusBar = new JPanel(new BorderLayout());
+        statusBar.setBackground(new Color(10, 12, 15));
+        statusBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, UIHelper.CARD_BORDER),
+                BorderFactory.createEmptyBorder(5, 10, 5, 10)));
+
+        JLabel schedulerLabel = UIHelper.styledLabel(crawlScheduler.getCountdownText(),
+                new Font("Segoe UI", Font.PLAIN, 12), new Color(116, 196, 118));
+        JLabel dbLabel = UIHelper.styledLabel("DB: đang kiểm tra...",
+                new Font("Segoe UI", Font.BOLD, 12), UIHelper.TEXT_MUTED);
+
+        statusBar.add(schedulerLabel, BorderLayout.WEST);
+        statusBar.add(dbLabel, BorderLayout.EAST);
+
+        Timer countdownTimer = new Timer(1000, e -> schedulerLabel.setText(crawlScheduler.getCountdownText()));
+        countdownTimer.start();
+
+        new SwingWorker<Boolean, Void>() {
+            @Override
+            protected Boolean doInBackground() {
+                return DatabaseConfig.testConnection();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    boolean connected = get();
+                    dbLabel.setText(connected ? "DB: đã kết nối" : "DB: lỗi kết nối");
+                    dbLabel.setForeground(connected ? UIHelper.SUCCESS : UIHelper.DANGER);
+                } catch (Exception e) {
+                    dbLabel.setText("DB: lỗi kết nối");
+                    dbLabel.setForeground(UIHelper.DANGER);
+                }
+            }
+        }.execute();
+
+        return statusBar;
     }
 
     private static JPanel createBrandPanel() {

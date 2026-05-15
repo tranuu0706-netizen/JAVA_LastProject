@@ -21,7 +21,9 @@ public class CrawlScheduler {
     private ScheduledFuture<?> scheduledTask;
     private Runnable crawlTask;
     private Consumer<String> logCallback;
-    private boolean running = false;
+    private volatile boolean running = false;
+    private volatile LocalDateTime nextRunAt;
+    private volatile int intervalHours;
 
     public CrawlScheduler() {
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -53,12 +55,13 @@ public class CrawlScheduler {
             return;
         }
 
-        int intervalHours = AppConfig.getCrawlIntervalHours();
+        intervalHours = AppConfig.getCrawlIntervalHours();
         String startTimeStr = AppConfig.getCrawlStartTime();
 
         // Calculate initial delay to start time
         long initialDelay = calculateInitialDelay(startTimeStr);
         long periodMs = TimeUnit.HOURS.toMillis(intervalHours);
+        nextRunAt = LocalDateTime.now().plus(Duration.ofMillis(initialDelay));
 
         log(String.format("Lên lịch crawl: bắt đầu sau %d phút, lặp lại mỗi %d giờ",
                 initialDelay / 60000, intervalHours));
@@ -72,6 +75,8 @@ public class CrawlScheduler {
                 log("Hoàn tất crawl tự động.");
             } catch (Exception e) {
                 log("Lỗi crawl tự động: " + e.getMessage());
+            } finally {
+                nextRunAt = LocalDateTime.now().plusHours(intervalHours);
             }
         }, initialDelay, periodMs, TimeUnit.MILLISECONDS);
 
@@ -87,6 +92,7 @@ public class CrawlScheduler {
             scheduledTask = null;
         }
         running = false;
+        nextRunAt = null;
         log("Đã dừng scheduler.");
     }
 
@@ -100,6 +106,38 @@ public class CrawlScheduler {
 
     public boolean isRunning() {
         return running;
+    }
+
+    public LocalDateTime getNextRunAt() {
+        return nextRunAt;
+    }
+
+    public int getIntervalHours() {
+        return intervalHours > 0 ? intervalHours : AppConfig.getCrawlIntervalHours();
+    }
+
+    public String getCountdownText() {
+        if (!running) {
+            return "[Scheduler] Lịch crawl đang tắt";
+        }
+        LocalDateTime nextRun = nextRunAt;
+        if (nextRun == null) {
+            return "[Scheduler] Đang tính lịch crawl tiếp theo";
+        }
+
+        Duration remaining = Duration.between(LocalDateTime.now(), nextRun);
+        if (remaining.isNegative() || remaining.isZero()) {
+            return "[Scheduler] Crawl tự động sắp bắt đầu";
+        }
+
+        long totalSeconds = remaining.getSeconds();
+        long hours = totalSeconds / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+        long seconds = totalSeconds % 60;
+        long totalMinutes = Math.max(1, remaining.toMinutes());
+
+        return String.format("[Scheduler] Lần crawl kế tiếp sau %02d:%02d:%02d (%d phút), lặp lại mỗi %d giờ",
+                hours, minutes, seconds, totalMinutes, getIntervalHours());
     }
 
     /**
