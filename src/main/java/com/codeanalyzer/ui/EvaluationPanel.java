@@ -438,7 +438,7 @@ public class EvaluationPanel extends JPanel {
 
         ScoreChartPanel() {
             setBackground(UIHelper.CARD_BG);
-            setPreferredSize(new Dimension(440, 270));
+            setPreferredSize(new Dimension(440, 320));
             setBorder(BorderFactory.createCompoundBorder(
                     BorderFactory.createLineBorder(UIHelper.CARD_BORDER),
                     BorderFactory.createEmptyBorder(14, 16, 14, 16)));
@@ -460,23 +460,22 @@ public class EvaluationPanel extends JPanel {
 
             int width = getWidth();
             int height = getHeight();
-            int left = 72;
-            int right = width - 26;
-            int top = 58;
-            int bottom = height - 36;
-            int chartWidth = Math.max(1, right - left);
-            int rowHeight = Math.max(34, (bottom - top) / labels.length);
+            int centerX = width / 2;
+            int centerY = Math.min(height - 108, Math.max(150, height / 2 + 12));
+            int radius = Math.max(70, Math.min(width - 180, height - 150) / 2);
 
             drawTitle(g2, width);
-            drawGrid(g2, left, top, right, bottom, chartWidth);
-            drawBars(g2, left, top, chartWidth, rowHeight);
+            drawRadarGrid(g2, centerX, centerY, radius);
+            drawScoreShape(g2, centerX, centerY, radius);
+            drawAxisLabels(g2, centerX, centerY, radius);
+            drawScoreBadges(g2, width, height);
 
             g2.dispose();
         }
 
         private void drawTitle(Graphics2D g2, int width) {
-            String title = "Điểm tổng hợp";
-            String subtitle = "Điểm";
+            String title = "Tam giác chỉ số năng lực";
+            String subtitle = "CTDL - Thuật toán - AI Clean";
             g2.setFont(new Font("Segoe UI", Font.BOLD, 14));
             g2.setColor(UIHelper.TEXT_MAIN);
             FontMetrics titleMetrics = g2.getFontMetrics();
@@ -488,42 +487,120 @@ public class EvaluationPanel extends JPanel {
             g2.drawString(subtitle, (width - subtitleMetrics.stringWidth(subtitle)) / 2, 42);
         }
 
-        private void drawGrid(Graphics2D g2, int left, int top, int right, int bottom, int chartWidth) {
-            g2.setFont(new Font("Segoe UI", Font.PLAIN, 10));
-            FontMetrics fm = g2.getFontMetrics();
-            for (int value = 0; value <= 100; value += 10) {
-                int x = left + Math.round(chartWidth * value / 100f);
-                g2.setColor(new Color(48, 55, 64));
-                g2.drawLine(x, top - 8, x, bottom);
-                g2.setColor(UIHelper.TEXT_MUTED);
-                String label = String.valueOf(value);
-                g2.drawString(label, x - fm.stringWidth(label) / 2, top - 16);
+        private void drawRadarGrid(Graphics2D g2, int centerX, int centerY, int radius) {
+            Stroke oldStroke = g2.getStroke();
+            for (int percent = 25; percent <= 100; percent += 25) {
+                double scale = percent / 100.0;
+                Polygon ring = buildPolygon(centerX, centerY, radius * scale, null);
+                g2.setColor(percent == 100 ? new Color(77, 86, 102) : new Color(45, 52, 62));
+                g2.setStroke(new BasicStroke(percent == 100 ? 1.6f : 1f));
+                g2.drawPolygon(ring);
+
+                g2.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+                g2.setColor(UIHelper.TEXT_SUBTLE);
+                int labelY = centerY - (int) Math.round(radius * scale) - 4;
+                g2.drawString(String.valueOf(percent), centerX + 6, labelY);
+            }
+
+            g2.setStroke(new BasicStroke(1.1f));
+            for (int i = 0; i < labels.length; i++) {
+                Point p = pointAt(centerX, centerY, radius, i);
+                g2.setColor(new Color(63, 72, 88));
+                g2.drawLine(centerX, centerY, p.x, p.y);
+            }
+            g2.setStroke(oldStroke);
+        }
+
+        private void drawScoreShape(Graphics2D g2, int centerX, int centerY, int radius) {
+            Polygon shape = buildPolygon(centerX, centerY, radius, scores);
+
+            Composite oldComposite = g2.getComposite();
+            g2.setComposite(AlphaComposite.SrcOver.derive(0.28f));
+            g2.setColor(UIHelper.PRIMARY);
+            g2.fillPolygon(shape);
+
+            g2.setComposite(AlphaComposite.SrcOver.derive(0.22f));
+            g2.setColor(UIHelper.SUCCESS);
+            g2.fillPolygon(shape);
+
+            g2.setComposite(oldComposite);
+            g2.setStroke(new BasicStroke(2.2f));
+            g2.setColor(new Color(115, 131, 255));
+            g2.drawPolygon(shape);
+
+            for (int i = 0; i < labels.length; i++) {
+                Point p = pointAt(centerX, centerY, radius * scores[i] / 100.0, i);
+                g2.setColor(colors[i]);
+                g2.fillOval(p.x - 6, p.y - 6, 12, 12);
+                g2.setColor(Color.WHITE);
+                g2.drawOval(p.x - 6, p.y - 6, 12, 12);
             }
         }
 
-        private void drawBars(Graphics2D g2, int left, int top, int chartWidth, int rowHeight) {
-            g2.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        private void drawAxisLabels(Graphics2D g2, int centerX, int centerY, int radius) {
+            g2.setFont(new Font("Segoe UI", Font.BOLD, 12));
             FontMetrics fm = g2.getFontMetrics();
-            int barHeight = 24;
 
             for (int i = 0; i < labels.length; i++) {
-                int centerY = top + i * rowHeight + rowHeight / 2;
-                int barY = centerY - barHeight / 2;
-                int barWidth = Math.round(chartWidth * (float) scores[i] / 100f);
+                Point p = pointAt(centerX, centerY, radius + 32, i);
+                String text = labels[i] + " " + Math.round(scores[i]);
+                int x = p.x - fm.stringWidth(text) / 2;
+                int y = p.y + fm.getAscent() / 2 - 2;
 
-                g2.setColor(UIHelper.TEXT_MUTED);
-                g2.drawString(labels[i], left - fm.stringWidth(labels[i]) - 12, centerY + fm.getAscent() / 2 - 2);
+                if (i == 0) {
+                    y -= 4;
+                } else if (i == 1) {
+                    x += 14;
+                } else {
+                    x -= 14;
+                }
 
-                g2.setColor(UIHelper.FIELD_BG);
-                g2.fillRoundRect(left, barY, chartWidth, barHeight, 8, 8);
                 g2.setColor(colors[i]);
-                g2.fillRoundRect(left, barY, Math.max(2, barWidth), barHeight, 8, 8);
-
-                String value = String.valueOf((int) Math.round(scores[i]));
-                g2.setColor(UIHelper.TEXT_MAIN);
-                int valueX = Math.min(left + Math.max(8, barWidth) + 8, left + chartWidth - fm.stringWidth(value));
-                g2.drawString(value, valueX, centerY + fm.getAscent() / 2 - 2);
+                g2.drawString(text, x, y);
             }
+        }
+
+        private void drawScoreBadges(Graphics2D g2, int width, int height) {
+            int badgeY = height - 38;
+            int badgeWidth = 116;
+            int gap = 8;
+            int totalWidth = badgeWidth * labels.length + gap * (labels.length - 1);
+            int startX = Math.max(16, (width - totalWidth) / 2);
+
+            g2.setFont(new Font("Segoe UI", Font.BOLD, 11));
+            FontMetrics fm = g2.getFontMetrics();
+            for (int i = 0; i < labels.length; i++) {
+                int x = startX + i * (badgeWidth + gap);
+                g2.setColor(new Color(19, 22, 27));
+                g2.fillRoundRect(x, badgeY, badgeWidth, 25, 8, 8);
+                g2.setColor(colors[i]);
+                g2.fillOval(x + 10, badgeY + 9, 8, 8);
+                g2.setColor(UIHelper.TEXT_MAIN);
+                String text = labels[i] + ": " + Math.round(scores[i]);
+                g2.drawString(text, x + 24, badgeY + 16);
+                if (fm.stringWidth(text) > badgeWidth - 30) {
+                    setToolTipText("CTDL: " + Math.round(scores[0])
+                            + " | Thuật toán: " + Math.round(scores[1])
+                            + " | AI Clean: " + Math.round(scores[2]));
+                }
+            }
+        }
+
+        private Polygon buildPolygon(int centerX, int centerY, double radius, double[] scoreValues) {
+            Polygon polygon = new Polygon();
+            for (int i = 0; i < labels.length; i++) {
+                double valueScale = scoreValues == null ? 1.0 : scoreValues[i] / 100.0;
+                Point p = pointAt(centerX, centerY, radius * valueScale, i);
+                polygon.addPoint(p.x, p.y);
+            }
+            return polygon;
+        }
+
+        private Point pointAt(int centerX, int centerY, double radius, int index) {
+            double angle = Math.toRadians(-90 + index * 120);
+            int x = centerX + (int) Math.round(Math.cos(angle) * radius);
+            int y = centerY + (int) Math.round(Math.sin(angle) * radius);
+            return new Point(x, y);
         }
 
         private double clamp(double value) {

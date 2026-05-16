@@ -42,6 +42,7 @@ public class UIHelper {
         btn.setBorder(BorderFactory.createEmptyBorder(9, 18, 9, 18));
         btn.putClientProperty("JButton.buttonType", "roundRect");
         btn.putClientProperty("FlatLaf.style", "arc: 12; borderWidth: 0; focusWidth: 1; innerFocusWidth: 0");
+        applyButtonSize(btn, 104, 40, 42);
         return btn;
     }
 
@@ -52,7 +53,16 @@ public class UIHelper {
         JButton btn = createButton(text, bgColor);
         btn.setFont(new Font("Segoe UI", Font.BOLD, 11));
         btn.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
+        applyButtonSize(btn, 78, 32, 30);
         return btn;
+    }
+
+    private static void applyButtonSize(JButton button, int minWidth, int height, int horizontalPadding) {
+        FontMetrics fm = button.getFontMetrics(button.getFont());
+        int width = Math.max(minWidth, fm.stringWidth(button.getText()) + horizontalPadding);
+        Dimension size = new Dimension(width, height);
+        button.setPreferredSize(size);
+        button.setMinimumSize(size);
     }
 
     /**
@@ -186,13 +196,15 @@ public class UIHelper {
      * Tạo header panel với tiêu đề + các nút bên phải.
      */
     public static JPanel createHeader(String titleText, JButton... buttons) {
-        JPanel header = new JPanel(new BorderLayout());
+        JPanel header = new JPanel();
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
         header.setOpaque(false);
         header.setBorder(BorderFactory.createEmptyBorder(0, 0, 18, 0));
 
         JLabel title = new JLabel(titleText);
         title.setFont(new Font("Segoe UI", Font.BOLD, 27));
         title.setForeground(TEXT_MAIN);
+        title.setToolTipText(titleText);
 
         JPanel titlePanel = new JPanel(new BorderLayout(0, 6));
         titlePanel.setOpaque(false);
@@ -204,7 +216,8 @@ public class UIHelper {
         accentWrap.setOpaque(false);
         accentWrap.add(accent);
         titlePanel.add(accentWrap, BorderLayout.SOUTH);
-        header.add(titlePanel, BorderLayout.WEST);
+        titlePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        header.add(titlePanel);
 
         if (buttons.length > 0) {
             JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
@@ -212,7 +225,9 @@ public class UIHelper {
             for (JButton btn : buttons) {
                 btnPanel.add(btn);
             }
-            header.add(btnPanel, BorderLayout.EAST);
+            btnPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            header.add(Box.createVerticalStrut(12));
+            header.add(btnPanel);
         }
 
         return header;

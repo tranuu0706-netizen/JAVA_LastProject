@@ -45,8 +45,8 @@ public class SettingsPanel extends JPanel {
     public SettingsPanel(CrawlScheduler crawlScheduler) {
         this.crawlScheduler = crawlScheduler;
 
-        setLayout(new BorderLayout(0, 12));
-        setBorder(BorderFactory.createEmptyBorder(30, 30, 30, 30));
+        setLayout(new BorderLayout(0, 14));
+        setBorder(BorderFactory.createEmptyBorder(30, 30, 26, 30));
         setBackground(UIHelper.BG_DARK);
 
         JButton btnRefresh = UIHelper.createButton("Làm mới", UIHelper.PRIMARY);
@@ -55,18 +55,25 @@ public class SettingsPanel extends JPanel {
         btnReload.addActionListener(e -> reloadSettings());
         add(UIHelper.createHeader("Cài đặt", btnRefresh), BorderLayout.NORTH);
 
-        JPanel content = new JPanel();
+        JPanel content = new JPanel(new GridLayout(1, 2, 14, 0));
         content.setOpaque(false);
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.add(createDatabaseSection());
-        content.add(Box.createVerticalStrut(10));
-        content.add(createGeminiSection());
-        content.add(Box.createVerticalStrut(10));
-        content.add(createEdgeSection());
-        content.add(Box.createVerticalStrut(10));
-        content.add(createCrawlSection());
-        content.add(Box.createVerticalStrut(10));
-        content.add(createAnalysisSection());
+
+        JPanel leftColumn = createColumn();
+        leftColumn.add(createDatabaseSection());
+        leftColumn.add(Box.createVerticalStrut(12));
+        leftColumn.add(createGeminiSection());
+        leftColumn.add(Box.createVerticalGlue());
+
+        JPanel rightColumn = createColumn();
+        rightColumn.add(createEdgeSection());
+        rightColumn.add(Box.createVerticalStrut(12));
+        rightColumn.add(createCrawlSection());
+        rightColumn.add(Box.createVerticalStrut(12));
+        rightColumn.add(createAnalysisSection());
+        rightColumn.add(Box.createVerticalGlue());
+
+        content.add(leftColumn);
+        content.add(rightColumn);
 
         JScrollPane scrollPane = new JScrollPane(content,
                 JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -75,23 +82,36 @@ public class SettingsPanel extends JPanel {
         scrollPane.getViewport().setBackground(UIHelper.BG_DARK);
         add(scrollPane, BorderLayout.CENTER);
 
-        JPanel footer = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
-        footer.setOpaque(false);
-        footer.add(btnSave);
-        footer.add(btnReload);
-        footer.add(statusLabel);
+        JPanel footer = new JPanel(new BorderLayout(12, 0));
+        footer.setBackground(UIHelper.CARD_BG);
+        footer.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UIHelper.CARD_BORDER),
+                BorderFactory.createEmptyBorder(12, 14, 12, 14)));
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        actions.setOpaque(false);
+        actions.add(btnReload);
+        actions.add(btnSave);
+        footer.add(statusLabel, BorderLayout.CENTER);
+        footer.add(actions, BorderLayout.EAST);
         add(footer, BorderLayout.SOUTH);
 
         refreshData();
+    }
+
+    private JPanel createColumn() {
+        JPanel column = new JPanel();
+        column.setOpaque(false);
+        column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
+        return column;
     }
 
     private JPanel createDatabaseSection() {
         JPanel section = createSection("Cấu hình Database");
         GridBagConstraints gbc = baseConstraints();
         int row = 0;
-        addRow(section, gbc, row++, "JDBC URL:", tfDbUrl, null);
-        addRow(section, gbc, row++, "Username:", tfDbUsername, null);
-        addRow(section, gbc, row++, "Password:", pfDbPassword, null);
+        addRow(section, gbc, row++, "JDBC URL", tfDbUrl, null);
+        addRow(section, gbc, row++, "Username", tfDbUsername, null);
+        addRow(section, gbc, row++, "Password", pfDbPassword, null);
 
         btnTestConnection.addActionListener(e -> testConnection());
         gbc.gridx = 1;
@@ -107,10 +127,10 @@ public class SettingsPanel extends JPanel {
         JPanel section = createSection("Gemini API");
         GridBagConstraints gbc = baseConstraints();
         int row = 0;
-        addRow(section, gbc, row++, "API Key:", pfGeminiApiKey, null);
-        addRow(section, gbc, row++, "Model:", tfGeminiModel, null);
-        addRow(section, gbc, row++, "Request delay (ms):", spinGeminiDelayMs, null);
-        addRow(section, gbc, row, "Max output tokens:", spinGeminiMaxTokens, null);
+        addRow(section, gbc, row++, "API Key", pfGeminiApiKey, null);
+        addRow(section, gbc, row++, "Model", tfGeminiModel, null);
+        addRow(section, gbc, row++, "Delay/request", spinGeminiDelayMs, null);
+        addRow(section, gbc, row, "Max tokens", spinGeminiMaxTokens, null);
         return section;
     }
 
@@ -118,9 +138,9 @@ public class SettingsPanel extends JPanel {
         JPanel section = createSection("Microsoft Edge");
         GridBagConstraints gbc = baseConstraints();
         int row = 0;
-        addRow(section, gbc, row++, "Edge Profile Path:", tfEdgeProfilePath,
+        addRow(section, gbc, row++, "Profile path", tfEdgeProfilePath,
                 createBrowseButton(tfEdgeProfilePath, true));
-        addRow(section, gbc, row, "Edge Driver Path:", tfEdgeDriverPath,
+        addRow(section, gbc, row, "Driver path", tfEdgeDriverPath,
                 createBrowseButton(tfEdgeDriverPath, false));
         return section;
     }
@@ -129,9 +149,9 @@ public class SettingsPanel extends JPanel {
         JPanel section = createSection("Cấu hình Crawl");
         GridBagConstraints gbc = baseConstraints();
         int row = 0;
-        addRow(section, gbc, row++, "Khoảng cách (giờ):", spinCrawlIntervalHours, null);
-        addRow(section, gbc, row++, "Giờ bắt đầu (HH:mm):", tfCrawlStartTime, null);
-        addRow(section, gbc, row, "Max submissions/crawl:", spinMaxSubmissions, null);
+        addRow(section, gbc, row++, "Khoảng cách", spinCrawlIntervalHours, null);
+        addRow(section, gbc, row++, "Giờ bắt đầu", tfCrawlStartTime, null);
+        addRow(section, gbc, row, "Max/crawl", spinMaxSubmissions, null);
         return section;
     }
 
@@ -139,8 +159,8 @@ public class SettingsPanel extends JPanel {
         JPanel section = createSection("Cấu hình Phân tích AI");
         GridBagConstraints gbc = baseConstraints();
         int row = 0;
-        addRow(section, gbc, row++, "Analysis batch size:", spinAnalysisBatchSize, null);
-        addRow(section, gbc, row, "Max code length:", spinAnalysisMaxCodeLength, null);
+        addRow(section, gbc, row++, "Batch size", spinAnalysisBatchSize, null);
+        addRow(section, gbc, row, "Max code length", spinAnalysisMaxCodeLength, null);
         return section;
     }
 
@@ -154,16 +174,16 @@ public class SettingsPanel extends JPanel {
                         0,
                         0,
                         new Font("Segoe UI", Font.BOLD, 13),
-                        Color.WHITE),
-                BorderFactory.createEmptyBorder(8, 14, 12, 14)));
+                        UIHelper.TEXT_MAIN),
+                BorderFactory.createEmptyBorder(8, 12, 12, 12)));
         form.setAlignmentX(Component.LEFT_ALIGNMENT);
-        form.setMaximumSize(new Dimension(Integer.MAX_VALUE, 190));
+        form.setMaximumSize(new Dimension(Integer.MAX_VALUE, 220));
         return form;
     }
 
     private GridBagConstraints baseConstraints() {
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 0, 4, 8);
+        gbc.insets = new Insets(5, 0, 5, 8);
         gbc.anchor = GridBagConstraints.WEST;
         return gbc;
     }
@@ -171,6 +191,7 @@ public class SettingsPanel extends JPanel {
     private void addRow(JPanel panel, GridBagConstraints gbc, int row, String labelText,
             JComponent field, JButton trailingButton) {
         JLabel label = UIHelper.styledLabel(labelText, new Font("Segoe UI", Font.BOLD, 12), UIHelper.TEXT_MUTED);
+        label.setPreferredSize(new Dimension(104, 28));
         gbc.gridx = 0;
         gbc.gridy = row;
         gbc.weightx = 0;
@@ -178,7 +199,9 @@ public class SettingsPanel extends JPanel {
         gbc.anchor = GridBagConstraints.WEST;
         panel.add(label, gbc);
 
-        field.setPreferredSize(new Dimension(420, 32));
+        field.setPreferredSize(new Dimension(260, 32));
+        field.setMinimumSize(new Dimension(120, 32));
+        styleInput(field);
         gbc.gridx = 1;
         gbc.weightx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -192,6 +215,11 @@ public class SettingsPanel extends JPanel {
         } else {
             panel.add(Box.createHorizontalStrut(1), gbc);
         }
+    }
+
+    private void styleInput(JComponent field) {
+        field.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        field.setToolTipText(field instanceof JTextField ? ((JTextField) field).getText() : null);
     }
 
     private JButton createBrowseButton(JTextField target, boolean directoriesOnly) {
