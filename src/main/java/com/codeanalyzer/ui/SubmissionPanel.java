@@ -467,6 +467,10 @@ public class SubmissionPanel extends JPanel {
                         if (analysisService.wasStoppedByAiLimit()) {
                             statusLabel.setText("AI đạt giới hạn rồi.");
                             statusLabel.setForeground(UIHelper.WARNING);
+                        } else if (!analysisService.getLastStopReason().isBlank()) {
+                            statusLabel.setText(analysisService.getLastStopReason());
+                            statusLabel.setForeground(UIHelper.DANGER);
+                            SubmissionPanel.this.refreshData();
                         } else if (result == null) {
                             statusLabel.setText("Không tạo được kết quả phân tích.");
                             statusLabel.setForeground(UIHelper.DANGER);

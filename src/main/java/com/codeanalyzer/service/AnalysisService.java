@@ -20,6 +20,7 @@ public class AnalysisService {
     private Consumer<String> logCallback;
     private volatile boolean cancelled = false;
     private volatile boolean stoppedByAiLimit = false;
+    private volatile String lastStopReason = "";
 
     public void setLogCallback(Consumer<String> logCallback) {
         this.logCallback = logCallback;
@@ -41,6 +42,8 @@ public class AnalysisService {
 
     public boolean wasStoppedByAiLimit() { return stoppedByAiLimit; }
 
+    public String getLastStopReason() { return lastStopReason; }
+
     private void log(String msg) {
         System.out.println("[AnalysisService] " + msg);
         if (logCallback != null) logCallback.accept(msg);
@@ -60,6 +63,7 @@ public class AnalysisService {
         try {
             cancelled = false;
             stoppedByAiLimit = false;
+            lastStopReason = "";
             int batchSize = AppConfig.getAnalysisBatchSize();
             List<Submission> subs = submissionDAO.findUnanalyzed(batchSize);
             log("Tìm thấy " + subs.size() + " submissions cần phân tích");
@@ -80,6 +84,7 @@ public class AnalysisService {
         try {
             cancelled = false;
             stoppedByAiLimit = false;
+            lastStopReason = "";
             int batchSize = AppConfig.getAnalysisBatchSize();
             List<Submission> subs = submissionDAO.findUnanalyzedByAccount(accountId, batchSize);
             log("Tìm thấy " + subs.size() + " submissions cần phân tích cho account " + accountId);
@@ -101,6 +106,7 @@ public class AnalysisService {
         try {
             cancelled = false;
             stoppedByAiLimit = false;
+            lastStopReason = "";
 
             sub = submissionDAO.findById(submissionDbId);
             if (sub == null) {
@@ -120,16 +126,18 @@ public class AnalysisService {
                 stoppedByAiLimit = true;
                 log(GeminiApiClient.LIMIT_REACHED_MESSAGE);
             } else {
-                log("Dừng phân tích vì lỗi cấu hình Gemini: " + e.getMessage());
+                lastStopReason = toUserFriendlyGeminiError(e.getMessage());
+                log("Dừng phân tích vì lỗi cấu hình Gemini: " + lastStopReason);
             }
             if (sub != null && !GeminiApiClient.LIMIT_REACHED_MESSAGE.equals(e.getMessage())) {
-                markAnalysisError(sub, e.getMessage());
+                markAnalysisError(sub, lastStopReason);
             }
             return null;
         } catch (Exception e) {
-            log("Lỗi phân tích submission #" + submissionDbId + ": " + e.getMessage());
+            lastStopReason = e.getMessage() != null ? e.getMessage() : "Lỗi phân tích AI.";
+            log("Lỗi phân tích submission #" + submissionDbId + ": " + lastStopReason);
             if (sub != null) {
-                markAnalysisError(sub, e.getMessage());
+                markAnalysisError(sub, lastStopReason);
             }
             return null;
         } finally {
@@ -153,13 +161,15 @@ public class AnalysisService {
                     stoppedByAiLimit = true;
                     log(GeminiApiClient.LIMIT_REACHED_MESSAGE);
                 } else {
-                    log("Dừng phân tích vì lỗi cấu hình Gemini: " + e.getMessage());
-                    markAnalysisError(sub, e.getMessage());
+                    lastStopReason = toUserFriendlyGeminiError(e.getMessage());
+                    log("Dừng phân tích vì lỗi cấu hình Gemini: " + lastStopReason);
+                    markAnalysisError(sub, lastStopReason);
                 }
                 break;
             } catch (Exception e) {
-                log("Lỗi phân tích " + sub.getProblemId() + ": " + e.getMessage());
-                markAnalysisError(sub, e.getMessage());
+                String reason = e.getMessage() != null ? e.getMessage() : "Lỗi phân tích AI.";
+                log("Lỗi phân tích " + sub.getProblemId() + ": " + reason);
+                markAnalysisError(sub, reason);
             }
         }
 
@@ -215,6 +225,32 @@ public class AnalysisService {
         }
         submissionDAO.updateAnalysisStatus(sub.getId(), SubmissionDAO.STATUS_ERROR,
                 message != null && !message.isBlank() ? message : "Lỗi phân tích AI.");
+    }
+
+    private String toUserFriendlyGeminiError(String message) {
+        if (message == null || message.isBlank()) {
+            return "Lỗi cấu hình Gemini.";
+        }
+
+        String lower = message.toLowerCase();
+        if (lower.contains("reported as leaked")) {
+            return "Gemini API key đã bị Google đánh dấu là bị lộ. Hãy tạo API key mới và cập nhật trong trang Cài đặt.";
+        }
+        if (lower.contains("api_key_invalid") || lower.contains("api key not valid")) {
+            return "Gemini API key không hợp lệ. Hãy kiểm tra hoặc tạo API key mới trong Google AI Studio.";
+        }
+        if (lower.contains("permission_denied") || lower.contains("403")) {
+            return "Gemini API bị từ chối quyền 403. Hãy kiểm tra API key hoặc tạo API key mới.";
+        }
+        if (lower.contains("invalid_argument")) {
+            return "Gemini từ chối request. Hãy kiểm tra model, max token hoặc nội dung gửi lên AI.";
+        }
+
+        String firstLine = message.lines().findFirst().orElse(message).trim();
+        if (firstLine.length() > 220) {
+            firstLine = firstLine.substring(0, 220) + "...";
+        }
+        return "Lỗi Gemini: " + firstLine;
     }
 
     public AiAnalysis getAnalysis(long submissionId) { return analysisDAO.findBySubmissionId(submissionId); }

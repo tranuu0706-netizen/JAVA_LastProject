@@ -102,6 +102,9 @@ public class AnalysisPanel extends JPanel {
                     if (analysisService.wasStoppedByAiLimit()) {
                         statusLabel.setText("AI đạt giới hạn rồi");
                         statusLabel.setForeground(UIHelper.WARNING);
+                    } else if (!analysisService.getLastStopReason().isBlank()) {
+                        statusLabel.setText(analysisService.getLastStopReason());
+                        statusLabel.setForeground(UIHelper.DANGER);
                     } else {
                         statusLabel.setText("Hoàn tất: đã phân tích " + count + " bài.");
                         statusLabel.setForeground(UIHelper.SUCCESS);

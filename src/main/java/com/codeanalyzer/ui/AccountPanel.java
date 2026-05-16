@@ -296,6 +296,11 @@ public class AccountPanel extends JPanel {
                         log("AI đạt giới hạn rồi");
                         JOptionPane.showMessageDialog(AccountPanel.this, "AI đạt giới hạn rồi", "Thông báo",
                                 JOptionPane.WARNING_MESSAGE);
+                    } else if (!analysisService.getLastStopReason().isBlank()) {
+                        String message = analysisService.getLastStopReason();
+                        log("Lỗi phân tích AI: " + message);
+                        JOptionPane.showMessageDialog(AccountPanel.this, message, "Lỗi phân tích AI",
+                                JOptionPane.ERROR_MESSAGE);
                     } else {
                         String message = "Hoàn thành phân tích xong " + count + " bài.";
                         log("✓ " + message);

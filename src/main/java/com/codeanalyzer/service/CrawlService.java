@@ -131,20 +131,17 @@ public class CrawlService {
                     totalScanned += crawlResult.getScanned();
                     totalSkipped += crawlResult.getSkippedExisting();
 
-                    // Save submissions to DB
+                    // Save every submission already crawled. A cancel request should stop future crawling,
+                    // not discard code that was already collected successfully.
                     int saved = 0;
                     for (Submission sub : subs) {
-                        if (cancelled) {
-                            log("Dừng lưu submissions còn lại do người dùng yêu cầu.");
-                            break;
-                        }
                         long id = submissionDAO.insert(sub);
                         if (id > 0) saved++;
                     }
                     totalCrawled += saved;
                     log("Lưu " + saved + "/" + subs.size() + " submissions cho " + account.getUsername());
 
-                    if (!cancelled) {
+                    if (!cancelled || saved > 0) {
                         accountDAO.updateLastCrawled(account.getId());
                         accountsProcessed++;
                     }
@@ -229,15 +226,13 @@ public class CrawlService {
             scanned = crawlResult.getScanned();
             skipped = crawlResult.getSkippedExisting();
 
+            // Save every submission already crawled. A cancel request should stop future crawling,
+            // not discard code that was already collected successfully.
             for (Submission sub : subs) {
-                if (cancelled) {
-                    log("Dừng lưu submissions còn lại do người dùng yêu cầu.");
-                    break;
-                }
                 long id = submissionDAO.insert(sub);
                 if (id > 0) saved++;
             }
-            if (!cancelled) {
+            if (!cancelled || saved > 0) {
                 accountDAO.updateLastCrawled(account.getId());
             }
             log("Lưu " + saved + "/" + subs.size() + " submissions cho " + account.getUsername());
